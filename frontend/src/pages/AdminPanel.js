@@ -36,7 +36,7 @@ const [filters, setFilters] = useState({
     setPasswordError('');
 
     try {
-      const response = await fetch('http:///camt.onrender.com/api/auth/admin-login', {
+      const response = await fetch('http://camt.onrender.com/api/auth/admin-login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
