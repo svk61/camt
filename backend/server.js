@@ -7,53 +7,23 @@ const jwt = require('jsonwebtoken');
 const dotenv = require('dotenv');
 const agoraService = require('./agoraService');
 
+
 dotenv.config();
 
 const app = express();
 
-// Middleware - CORS Configuration (Permissive for debugging)
-console.log('CORS: Allowing all origins for debugging');
-
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  console.log('Request from origin:', origin);
-  
-  res.header('Access-Control-Allow-Origin', origin || '*');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  res.header('Access-Control-Expose-Headers', 'Content-Range, X-Content-Range');
-  
-  // Handle preflight
-  if (req.method === 'OPTIONS') {
-    console.log('Handling OPTIONS preflight request');
-    return res.sendStatus(200);
-  }
-  
-  next();
-});
-
+// Middleware
+app.use(cors());
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
 // MongoDB Connection
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/support-platform';
-console.log('Attempting to connect to MongoDB...');
-console.log('MongoDB URI format:', MONGODB_URI.substring(0, 20) + '...');
-
-mongoose.connect(MONGODB_URI, {
+mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/support-platform', {
   useNewUrlParser: true,
-  useUnifiedTopology: true,
-  serverSelectionTimeoutMS: 5000
-}).then(() => {
-  console.log('✅ MongoDB connected successfully');
-}).catch(err => {
-  console.error('❌ MongoDB connection error:', err.message);
-  console.error('Full error:', err);
-});
-
+  useUnifiedTopology: true
+}).then(() => console.log('MongoDB connected'))
+  .catch(err => console.error('MongoDB connection error:', err));
 console.log('AGORA_APP_ID:', process.env.AGORA_APP_ID);
-console.log('AGORA_APP_CERTIFICATE:', process.env.AGORA_APP_CERTIFICATE ? '***configured***' : 'missing');
+console.log('AGORA_APP_CERTIFICATE:', process.env.AGORA_APP_CERTIFICATE);
 
 // Models
 const UserSchema = new mongoose.Schema({
@@ -65,10 +35,12 @@ const UserSchema = new mongoose.Schema({
   hasCompletedAssessment: { type: Boolean, default: false },
   assessmentAnswers: Object,
   assessmentScore: { type: Number, default: 0 },
-  gender: String,
+  // YENİ ALANLAR EKLE:
+  gender: String,        // 'Erkek', 'Kadın', 'Diğer'
   age: Number,
-  education: String,
+  education: String,     // 'İlkokul', 'Ortaokul', 'Lise', 'Üniversite', 'Okuyorum', 'Mezun'
   school: String,
+  // SON:
   assignedChannels: [String],
   isAdmin: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now }
@@ -89,9 +61,7 @@ const AssessmentResultSchema = new mongoose.Schema({
   education: String,
   submittedAt: { type: Date, default: Date.now }
 });
-
 const AssessmentResult = mongoose.model('AssessmentResult', AssessmentResultSchema);
-
 const ChannelSchema = new mongoose.Schema({
   name: { type: String, required: true, unique: true },
   category: { type: String, required: true },
@@ -124,7 +94,7 @@ const User = mongoose.model('User', UserSchema);
 const Channel = mongoose.model('Channel', ChannelSchema);
 const Message = mongoose.model('Message', MessageSchema);
 const Assessment = mongoose.model('Assessment', AssessmentSchema);
-
+console.log(this.appId, this.appCertificate)
 // Middleware to verify JWT token
 const authMiddleware = async (req, res, next) => {
   try {
@@ -178,31 +148,8 @@ const adminMiddleware = async (req, res, next) => {
 
 // Health check
 app.get('/health', (req, res) => {
-  const healthcheck = {
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
-    environment: process.env.NODE_ENV || 'development'
-  };
-  res.status(200).json(healthcheck);
+  res.status(200).json({ status: 'healthy', timestamp: new Date().toISOString() });
 });
-
-// Root endpoint
-app.get('/', (req, res) => {
-  res.status(200).json({ 
-    message: 'Support Platform API',
-    version: '1.0.0',
-    status: 'running',
-    endpoints: {
-      health: '/health',
-      auth: '/api/auth/*',
-      channels: '/api/channels',
-      profile: '/api/profile'
-    }
-  });
-});
-
 app.get('/api/assessment/results', adminMiddleware, async (req, res) => {
   try {
     const results = await AssessmentResult.find()
@@ -226,9 +173,8 @@ app.get('/api/assessment/results', adminMiddleware, async (req, res) => {
     res.status(500).json({ error: 'Sonuçlar getirilemedi' });
   }
 });
-
 // Auth Routes
-app.post('/auth/register', async (req, res) => {
+app.post('/api/auth/register', async (req, res) => {
   try {
     const { email, password, gender, age, education, school } = req.body;
     
@@ -283,8 +229,7 @@ app.post('/auth/register', async (req, res) => {
     res.status(500).json({ error: 'Kayıt başarısız' });
   }
 });
-
-app.post('/auth/login', async (req, res) => {
+app.get('/api/assessment/results/stats', adminMiddleware, async (req, res) => {
   try {
     const results = await AssessmentResult.find();
     
@@ -328,7 +273,6 @@ app.post('/auth/login', async (req, res) => {
     res.status(500).json({ error: 'İstatistikler getirilemedi' });
   }
 });
-
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -447,7 +391,6 @@ app.post('/api/assessment/submit', authMiddleware, async (req, res) => {
     res.status(500).json({ error: 'Anket gönderilemedi' });
   }
 });
-
 // Channel Routes
 app.get('/api/channels', authMiddleware, async (req, res) => {
   try {
@@ -462,7 +405,6 @@ app.get('/api/channels', authMiddleware, async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch channels' });
   }
 });
-
 const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || 
   bcrypt.hashSync('admin123', 10);
 
@@ -498,7 +440,6 @@ app.post('/api/auth/admin-login', async (req, res) => {
     res.status(500).json({ error: 'Giriş başarısız' });
   }
 });
-
 app.get('/api/channels/all', authMiddleware, async (req, res) => {
   try {
     // Get all public channels for browsing
@@ -662,6 +603,8 @@ app.get('/api/profile', authMiddleware, async (req, res) => {
   }
 });
 
+
+
 app.put('/api/profile', authMiddleware, async (req, res) => {
   try {
     const { displayName, bio, isAnonymous } = req.body;
@@ -696,7 +639,7 @@ app.put('/api/admin/assessment', authMiddleware, adminMiddleware, async (req, re
     res.status(500).json({ error: 'Failed to update assessment' });
   }
 });
-
+ const a =  process.env.REACT_APP_AGORA_APP_ID;
 // Agora Routes
 app.get('/api/agora/token', authMiddleware, async (req, res) => {
   try {
@@ -755,90 +698,29 @@ app.get('/api/agora/rtc-token', authMiddleware, async (req, res) => {
   }
 });
 
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-});
-
-// Handle uncaught exceptions
-process.on('uncaughtException', (error) => {
-  console.error('Uncaught Exception:', error);
-  process.exit(1);
-});
 
 // Initialize default channels
 async function initializeDefaultChannels() {
-  try {
-    const channelCount = await Channel.countDocuments();
+  const channelCount = await Channel.countDocuments();
+  
+  if (channelCount === 0) {
+    const defaultChannels = [
+      { name: 'general', category: 'General', description: 'General discussion', isPublic: true },
+      { name: 'career-advice', category: 'Support', description: 'Career guidance and advice', isPublic: true },
+      { name: 'mentorship', category: 'Support', description: 'Mentorship opportunities', isPublic: false },
+      { name: 'networking', category: 'Community', description: 'Professional networking', isPublic: true },
+      { name: 'support', category: 'Support', description: 'Emotional support and encouragement', isPublic: true },
+      { name: 'wellness', category: 'Support', description: 'Mental health and wellness', isPublic: true }
+    ];
     
-    if (channelCount === 0) {
-      const defaultChannels = [
-        { name: 'general', category: 'General', description: 'General discussion', isPublic: true },
-        { name: 'career-advice', category: 'Support', description: 'Career guidance and advice', isPublic: true },
-        { name: 'mentorship', category: 'Support', description: 'Mentorship opportunities', isPublic: false },
-        { name: 'networking', category: 'Community', description: 'Professional networking', isPublic: true },
-        { name: 'support', category: 'Support', description: 'Emotional support and encouragement', isPublic: true },
-        { name: 'wellness', category: 'Support', description: 'Mental health and wellness', isPublic: true }
-      ];
-      
-      await Channel.insertMany(defaultChannels);
-      console.log('Default channels created');
-    } else {
-      console.log(`${channelCount} channels already exist`);
-    }
-  } catch (error) {
-    console.error('Error in initializeDefaultChannels:', error);
-    throw error;
+    await Channel.insertMany(defaultChannels);
+    console.log('Default channels created');
   }
 }
 
 // Start server
-const PORT = parseInt(process.env.PORT || '3000', 10);
-const HOST = '0.0.0.0';
-
-console.log(`Attempting to start server on ${HOST}:${PORT}...`);
-console.log('Environment:', process.env.NODE_ENV || 'development');
-console.log('PORT from env:', process.env.PORT);
-
-// Ensure server starts after MongoDB connection
-mongoose.connection.once('open', () => {
-  console.log('MongoDB connection is ready, starting HTTP server...');
-  
-  const server = app.listen(PORT, HOST, async () => {
-    console.log(`✅ Server running on ${HOST}:${PORT}`);
-    console.log(`Health check available at: http://localhost:${PORT}/health`);
-    try {
-      await initializeDefaultChannels();
-      console.log('✅ Default channels initialized');
-    } catch (error) {
-      console.error('❌ Error initializing channels:', error);
-    }
-  });
-
-  server.on('error', (error) => {
-    console.error('❌ Server error:', error);
-    if (error.code === 'EADDRINUSE') {
-      console.error(`Port ${PORT} is already in use`);
-    } else if (error.code === 'EACCES') {
-      console.error(`Port ${PORT} requires elevated privileges`);
-    }
-    process.exit(1);
-  });
-
-  server.on('listening', () => {
-    const addr = server.address();
-    console.log(`✅✅✅ Server is READY and listening on ${addr.address}:${addr.port}`);
-  });
-
-  // Graceful shutdown handler
-  process.on('SIGTERM', () => {
-    console.log('SIGTERM signal received: closing HTTP server');
-    server.close(() => {
-      console.log('HTTP server closed');
-      mongoose.connection.close(false, () => {
-        console.log('MongoDB connection closed');
-        process.exit(0);
-      });
-    });
-  });
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, async () => {
+  console.log(`Server running on port ${PORT}`);
+  await initializeDefaultChannels();
 });
