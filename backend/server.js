@@ -11,40 +11,27 @@ dotenv.config();
 
 const app = express();
 
-// Middleware
-const allowedOrigins = [
-  'http://localhost:3000',
-  'http://localhost:5173',
-  'http://localhost:5174',
-  'https://camt-zgl6.vercel.app'
-];
+// Middleware - CORS Configuration (Permissive for debugging)
+console.log('CORS: Allowing all origins for debugging');
 
-// Add FRONTEND_URL from environment if exists
-if (process.env.FRONTEND_URL) {
-  allowedOrigins.push(process.env.FRONTEND_URL);
-}
-
-console.log('Allowed CORS origins:', allowedOrigins);
-
-app.use(cors({
-  origin: function (origin, callback) {
-    // Allow requests with no origin (mobile apps, Postman, curl)
-    if (!origin) return callback(null, true);
-    
-    // Check if origin is in allowed list
-    if (allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      console.warn('Blocked by CORS:', origin);
-      callback(new Error(`Origin ${origin} not allowed by CORS`));
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  exposedHeaders: ['Content-Range', 'X-Content-Range'],
-  maxAge: 600 // Cache preflight for 10 minutes
-}));
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  console.log('Request from origin:', origin);
+  
+  res.header('Access-Control-Allow-Origin', origin || '*');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  res.header('Access-Control-Expose-Headers', 'Content-Range, X-Content-Range');
+  
+  // Handle preflight
+  if (req.method === 'OPTIONS') {
+    console.log('Handling OPTIONS preflight request');
+    return res.sendStatus(200);
+  }
+  
+  next();
+});
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -241,7 +228,7 @@ app.get('/api/assessment/results', adminMiddleware, async (req, res) => {
 });
 
 // Auth Routes
-app.post('/api/auth/register', async (req, res) => {
+app.post('/auth/register', async (req, res) => {
   try {
     const { email, password, gender, age, education, school } = req.body;
     
@@ -297,7 +284,7 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-app.get('/api/assessment/results/stats', adminMiddleware, async (req, res) => {
+app.post('/auth/login', async (req, res) => {
   try {
     const results = await AssessmentResult.find();
     
