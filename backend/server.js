@@ -382,6 +382,7 @@ app.post('/assessment/submit', authMiddleware, async (req, res) => {
     
     const score = Object.values(answers).filter(answer => answer === 'yes').length;
     
+    // Save assessment result
     const assessmentResult = new AssessmentResult({
       userId: req.user._id,
       answers,
@@ -393,22 +394,34 @@ app.post('/assessment/submit', authMiddleware, async (req, res) => {
     
     await assessmentResult.save();
     
-    req.user.assessmentAnswers = answers;
-    req.user.assessmentScore = score;
-    req.user.hasCompletedAssessment = true;
-    req.user.assignedChannels = ['general', 'support'];
-    await req.user.save();
+    // Update user using findByIdAndUpdate to avoid version conflicts
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user._id,
+      {
+        $set: {
+          assessmentAnswers: answers,
+          assessmentScore: score,
+          hasCompletedAssessment: true,
+          assignedChannels: ['general', 'support']
+        }
+      },
+      { new: true }
+    );
+    
+    if (!updatedUser) {
+      return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
+    }
     
     res.json({ 
       success: true,
       score,
       totalQuestions: 16,
       percentage: Math.round((score / 16) * 100),
-      assignedChannels: req.user.assignedChannels
+      assignedChannels: updatedUser.assignedChannels
     });
   } catch (error) {
     console.error('Assessment submission error:', error);
-    res.status(500).json({ error: 'Anket gönderilemedi' });
+    res.status(500).json({ error: 'Anket gönderilemedi', details: error.message });
   }
 });
 
@@ -419,6 +432,7 @@ app.post('/api/assessment/submit', authMiddleware, async (req, res) => {
     
     const score = Object.values(answers).filter(answer => answer === 'yes').length;
     
+    // Save assessment result
     const assessmentResult = new AssessmentResult({
       userId: req.user._id,
       answers,
@@ -430,22 +444,34 @@ app.post('/api/assessment/submit', authMiddleware, async (req, res) => {
     
     await assessmentResult.save();
     
-    req.user.assessmentAnswers = answers;
-    req.user.assessmentScore = score;
-    req.user.hasCompletedAssessment = true;
-    req.user.assignedChannels = ['general', 'support'];
-    await req.user.save();
+    // Update user using findByIdAndUpdate to avoid version conflicts
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user._id,
+      {
+        $set: {
+          assessmentAnswers: answers,
+          assessmentScore: score,
+          hasCompletedAssessment: true,
+          assignedChannels: ['general', 'support']
+        }
+      },
+      { new: true }
+    );
+    
+    if (!updatedUser) {
+      return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
+    }
     
     res.json({ 
       success: true,
       score,
       totalQuestions: 16,
       percentage: Math.round((score / 16) * 100),
-      assignedChannels: req.user.assignedChannels
+      assignedChannels: updatedUser.assignedChannels
     });
   } catch (error) {
     console.error('Assessment submission error:', error);
-    res.status(500).json({ error: 'Anket gönderilemedi' });
+    res.status(500).json({ error: 'Anket gönderilemedi', details: error.message });
   }
 });
 
