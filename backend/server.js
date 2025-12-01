@@ -12,10 +12,40 @@ dotenv.config();
 const app = express();
 
 // Middleware
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'https://camt-zgl6.vercel.app'
+];
+
+// Add FRONTEND_URL from environment if exists
+if (process.env.FRONTEND_URL) {
+  allowedOrigins.push(process.env.FRONTEND_URL);
+}
+
+console.log('Allowed CORS origins:', allowedOrigins);
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || '*',
-  credentials: true
+  origin: function (origin, callback) {
+    // Allow requests with no origin (mobile apps, Postman, curl)
+    if (!origin) return callback(null, true);
+    
+    // Check if origin is in allowed list
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.warn('Blocked by CORS:', origin);
+      callback(new Error(`Origin ${origin} not allowed by CORS`));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Content-Range', 'X-Content-Range'],
+  maxAge: 600 // Cache preflight for 10 minutes
 }));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -161,7 +191,29 @@ const adminMiddleware = async (req, res, next) => {
 
 // Health check
 app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'healthy', timestamp: new Date().toISOString() });
+  const healthcheck = {
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    environment: process.env.NODE_ENV || 'development'
+  };
+  res.status(200).json(healthcheck);
+});
+
+// Root endpoint
+app.get('/', (req, res) => {
+  res.status(200).json({ 
+    message: 'Support Platform API',
+    version: '1.0.0',
+    status: 'running',
+    endpoints: {
+      health: '/health',
+      auth: '/api/auth/*',
+      channels: '/api/channels',
+      profile: '/api/profile'
+    }
+  });
 });
 
 app.get('/api/assessment/results', adminMiddleware, async (req, res) => {
@@ -716,18 +768,6 @@ app.get('/api/agora/rtc-token', authMiddleware, async (req, res) => {
   }
 });
 
-// Graceful shutdown handler
-process.on('SIGTERM', () => {
-  console.log('SIGTERM signal received: closing HTTP server');
-  server.close(() => {
-    console.log('HTTP server closed');
-    mongoose.connection.close(false, () => {
-      console.log('MongoDB connection closed');
-      process.exit(0);
-    });
-  });
-});
-
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);
@@ -766,33 +806,52 @@ async function initializeDefaultChannels() {
 }
 
 // Start server
-const PORT = process.env.PORT || 5000;
-const HOST = '0.0.0.0'; // Railway için gerekli
+const PORT = parseInt(process.env.PORT || '3000', 10);
+const HOST = '0.0.0.0';
+
 console.log(`Attempting to start server on ${HOST}:${PORT}...`);
 console.log('Environment:', process.env.NODE_ENV || 'development');
+console.log('PORT from env:', process.env.PORT);
 
-const server = app.listen(PORT, HOST, async () => {
-  console.log(`✅ Server running on ${HOST}:${PORT}`);
-  console.log(`Health check available at: http://localhost:${PORT}/health`);
-  try {
-    await initializeDefaultChannels();
-    console.log('✅ Default channels initialized');
-  } catch (error) {
-    console.error('❌ Error initializing channels:', error);
-  }
-});
+// Ensure server starts after MongoDB connection
+mongoose.connection.once('open', () => {
+  console.log('MongoDB connection is ready, starting HTTP server...');
+  
+  const server = app.listen(PORT, HOST, async () => {
+    console.log(`✅ Server running on ${HOST}:${PORT}`);
+    console.log(`Health check available at: http://localhost:${PORT}/health`);
+    try {
+      await initializeDefaultChannels();
+      console.log('✅ Default channels initialized');
+    } catch (error) {
+      console.error('❌ Error initializing channels:', error);
+    }
+  });
 
-server.on('error', (error) => {
-  console.error('❌ Server error:', error);
-  if (error.code === 'EADDRINUSE') {
-    console.error(`Port ${PORT} is already in use`);
-  } else if (error.code === 'EACCES') {
-    console.error(`Port ${PORT} requires elevated privileges`);
-  }
-  process.exit(1);
-});
+  server.on('error', (error) => {
+    console.error('❌ Server error:', error);
+    if (error.code === 'EADDRINUSE') {
+      console.error(`Port ${PORT} is already in use`);
+    } else if (error.code === 'EACCES') {
+      console.error(`Port ${PORT} requires elevated privileges`);
+    }
+    process.exit(1);
+  });
 
-server.on('listening', () => {
-  const addr = server.address();
-  console.log(`Server is listening on ${addr.address}:${addr.port}`);
+  server.on('listening', () => {
+    const addr = server.address();
+    console.log(`✅✅✅ Server is READY and listening on ${addr.address}:${addr.port}`);
+  });
+
+  // Graceful shutdown handler
+  process.on('SIGTERM', () => {
+    console.log('SIGTERM signal received: closing HTTP server');
+    server.close(() => {
+      console.log('HTTP server closed');
+      mongoose.connection.close(false, () => {
+        console.log('MongoDB connection closed');
+        process.exit(0);
+      });
+    });
+  });
 });
