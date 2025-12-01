@@ -24,52 +24,52 @@ const ASSESSMENT_QUESTIONS = [
   },
   {
     id: 5,
-    question: "Öğretmenler sınıfta öğrencilere hitap, davranış ve cezalandırma şekillerinde cinsiyete göre farklılıklar gösterdiğini hissediyor musun?",
+    question: "Öğretmenlerin öğrencilere hitap, davranış ve cezalandırma biçimlerinde cinsiyete göre farklılıklar olduğunu hissediyor musun?",
     type: "yes_no"
   },
   {
     id: 6,
-    question: "Sınıf içinde herhangi bir görev dağılımı yapıldığında bu dağılım esnasında cinsiyet belirleyici bir nitelik gösterir mi?",
+    question: "Sınıf içinde görev dağılımı yapılırken cinsiyet belirleyici bir rol oynar mı?",
     type: "yes_no"
   },
   {
     id: 7,
-    question: "Okulda ya da sosyal çevrende, 'erkeksen bunu yapmalısın / yapmamalısın' gibi kalıplaşmış beklentiler hissediyor musun?",
+    question: "Okulda ya da sosyal çevrende, 'erkeksen bunu yapmalısın/yapmamalısın' gibi kalıplaşmış beklentiler hissediyor musun?",
     type: "yes_no"
   },
   {
     id: 8,
-    question: "Başarılarınla ilgili olarak 'erkek olduğun için' daha fazla ya da daha az takdir edildiğini hissettiğin oldu mu?",
+    question: "Başarıların konusunda 'erkek olduğun için' daha fazla ya da daha az takdir edildiğini hissettiğin oldu mu?",
     type: "yes_no"
   },
   {
     id: 9,
-    question: "Hegemonik (Bir şeyin veya birinin diğerleri üzerinde baskın ve yönlendirici olması.) erkeklik anlayışı okulun kültüründe dolaylı biçimde hissedilir.",
+    question: "Hegemonik erkeklik anlayışı okul kültüründe dolaylı biçimde hissedilir.",
     type: "yes_no"
   },
   {
     id: 10,
-    question: "Sence güçlü olmak her zaman hegemonik (Bir şeyin veya birinin diğerleri üzerinde baskın ve yönlendirici olması.) bir davranış mıdır?",
+    question: "Sence güçlü olmak her zaman hegemonik bir davranış mıdır?",
     type: "yes_no"
   },
   {
     id: 11,
-    question: "'Erkek gibi davranmak' ifadesi sana ne hissettiriyor?",
+    question: "‘Erkek gibi davranmak’ ifadesi kötü hissettiriyor mu?",
     type: "yes_no"
   },
   {
     id: 12,
-    question: "Sence bu hegemonik (Bir şeyin veya birinin diğerleri üzerinde baskın ve yönlendirici olması.) kalıplar, erkeklerin kariyer yaşamında da cam tavan oluşturur mu?",
+    question: "Hegemonik erkeklik kalıpları, erkeklerin kariyer yaşamında da cam tavan oluşturur mu?",
     type: "yes_no"
   },
   {
     id: 13,
-    question: "Erkekler duygularını bastırmak zorunda hisseder çünkü toplum böyle bekler.",
+    question: "Erkekler, toplumun beklentileri nedeniyle duygularını bastırmak zorunda hisseder.",
     type: "yes_no"
   },
   {
     id: 14,
-    question: "Hegemonik (Bir şeyin veya birinin diğerleri üzerinde baskın ve yönlendirici olması.) erkeklik anlayışı, erkeklerin de kendi potansiyellerini sınırlayabilir.",
+    question: "Hegemonik erkeklik anlayışı, erkeklerin kendi potansiyellerini de sınırlayabilir.",
     type: "yes_no"
   },
   {
@@ -79,7 +79,7 @@ const ASSESSMENT_QUESTIONS = [
   },
   {
     id: 16,
-    question: "Okulun sana 'erkeklik' hakkında hangi mesajları verdiğini düşünüyorsun? Bu mesajlardan hangilerini kabul ediyor, hangilerini reddediyorsun?",
+    question: "Okulun sana ‘erkeklik’ hakkında mesajlar verdiğini düşünüyor musun? Bu mesajları kabul ediyor musun?",
     type: "yes_no"
   }
 ];
