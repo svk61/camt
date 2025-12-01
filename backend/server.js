@@ -12,15 +12,28 @@ dotenv.config();
 const app = express();
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: process.env.FRONTEND_URL || '*',
+  credentials: true
+}));
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // MongoDB Connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/support-platform', {
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/support-platform';
+console.log('Attempting to connect to MongoDB...');
+console.log('MongoDB URI format:', MONGODB_URI.substring(0, 20) + '...');
+
+mongoose.connect(MONGODB_URI, {
   useNewUrlParser: true,
-  useUnifiedTopology: true
-}).then(() => console.log('MongoDB connected'))
-  .catch(err => console.error('MongoDB connection error:', err));
+  useUnifiedTopology: true,
+  serverSelectionTimeoutMS: 5000
+}).then(() => {
+  console.log('✅ MongoDB connected successfully');
+}).catch(err => {
+  console.error('❌ MongoDB connection error:', err.message);
+  console.error('Full error:', err);
+});
 
 console.log('AGORA_APP_ID:', process.env.AGORA_APP_ID);
 console.log('AGORA_APP_CERTIFICATE:', process.env.AGORA_APP_CERTIFICATE ? '***configured***' : 'missing');
@@ -715,28 +728,71 @@ process.on('SIGTERM', () => {
   });
 });
 
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  process.exit(1);
+});
+
 // Initialize default channels
 async function initializeDefaultChannels() {
-  const channelCount = await Channel.countDocuments();
-  
-  if (channelCount === 0) {
-    const defaultChannels = [
-      { name: 'general', category: 'General', description: 'General discussion', isPublic: true },
-      { name: 'career-advice', category: 'Support', description: 'Career guidance and advice', isPublic: true },
-      { name: 'mentorship', category: 'Support', description: 'Mentorship opportunities', isPublic: false },
-      { name: 'networking', category: 'Community', description: 'Professional networking', isPublic: true },
-      { name: 'support', category: 'Support', description: 'Emotional support and encouragement', isPublic: true },
-      { name: 'wellness', category: 'Support', description: 'Mental health and wellness', isPublic: true }
-    ];
+  try {
+    const channelCount = await Channel.countDocuments();
     
-    await Channel.insertMany(defaultChannels);
-    console.log('Default channels created');
+    if (channelCount === 0) {
+      const defaultChannels = [
+        { name: 'general', category: 'General', description: 'General discussion', isPublic: true },
+        { name: 'career-advice', category: 'Support', description: 'Career guidance and advice', isPublic: true },
+        { name: 'mentorship', category: 'Support', description: 'Mentorship opportunities', isPublic: false },
+        { name: 'networking', category: 'Community', description: 'Professional networking', isPublic: true },
+        { name: 'support', category: 'Support', description: 'Emotional support and encouragement', isPublic: true },
+        { name: 'wellness', category: 'Support', description: 'Mental health and wellness', isPublic: true }
+      ];
+      
+      await Channel.insertMany(defaultChannels);
+      console.log('Default channels created');
+    } else {
+      console.log(`${channelCount} channels already exist`);
+    }
+  } catch (error) {
+    console.error('Error in initializeDefaultChannels:', error);
+    throw error;
   }
 }
 
 // Start server
 const PORT = process.env.PORT || 5000;
-const server = app.listen(PORT, async () => {
-  console.log(`Server running on port ${PORT}`);
-  await initializeDefaultChannels();
+const HOST = '0.0.0.0'; // Railway için gerekli
+console.log(`Attempting to start server on ${HOST}:${PORT}...`);
+console.log('Environment:', process.env.NODE_ENV || 'development');
+
+const server = app.listen(PORT, HOST, async () => {
+  console.log(`✅ Server running on ${HOST}:${PORT}`);
+  console.log(`Health check available at: http://localhost:${PORT}/health`);
+  try {
+    await initializeDefaultChannels();
+    console.log('✅ Default channels initialized');
+  } catch (error) {
+    console.error('❌ Error initializing channels:', error);
+  }
+});
+
+server.on('error', (error) => {
+  console.error('❌ Server error:', error);
+  if (error.code === 'EADDRINUSE') {
+    console.error(`Port ${PORT} is already in use`);
+  } else if (error.code === 'EACCES') {
+    console.error(`Port ${PORT} requires elevated privileges`);
+  }
+  process.exit(1);
+});
+
+server.on('listening', () => {
+  const addr = server.address();
+  console.log(`Server is listening on ${addr.address}:${addr.port}`);
 });
