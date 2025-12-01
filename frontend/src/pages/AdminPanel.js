@@ -36,7 +36,7 @@ const [filters, setFilters] = useState({
     setPasswordError('');
 
     try {
-      const response = await fetch('https://camt-production.up.railway.app/', {
+      const response = await fetch('https://camt-production.up.railway.app', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -76,7 +76,7 @@ const [filters, setFilters] = useState({
         return;
       }
 
-      const response = await fetch('https://camt-production.up.railway.app/', {
+      const response = await fetch('https://camt-production.up.railway.app', {
         headers: {
           'Authorization': `Bearer ${adminToken}`,
           'Content-Type': 'application/json'
