@@ -7,7 +7,6 @@ const jwt = require('jsonwebtoken');
 const dotenv = require('dotenv');
 const agoraService = require('./agoraService');
 
-
 dotenv.config();
 
 const app = express();
@@ -35,12 +34,10 @@ const UserSchema = new mongoose.Schema({
   hasCompletedAssessment: { type: Boolean, default: false },
   assessmentAnswers: Object,
   assessmentScore: { type: Number, default: 0 },
-  // YENİ ALANLAR EKLE:
-  gender: String,        // 'Erkek', 'Kadın', 'Diğer'
+  gender: String,
   age: Number,
-  education: String,     // 'İlkokul', 'Ortaokul', 'Lise', 'Üniversite', 'Okuyorum', 'Mezun'
+  education: String,
   school: String,
-  // SON:
   assignedChannels: [String],
   isAdmin: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now }
@@ -62,6 +59,7 @@ const AssessmentResultSchema = new mongoose.Schema({
   submittedAt: { type: Date, default: Date.now }
 });
 const AssessmentResult = mongoose.model('AssessmentResult', AssessmentResultSchema);
+
 const ChannelSchema = new mongoose.Schema({
   name: { type: String, required: true, unique: true },
   category: { type: String, required: true },
@@ -94,7 +92,7 @@ const User = mongoose.model('User', UserSchema);
 const Channel = mongoose.model('Channel', ChannelSchema);
 const Message = mongoose.model('Message', MessageSchema);
 const Assessment = mongoose.model('Assessment', AssessmentSchema);
-console.log(this.appId, this.appCertificate)
+
 // Middleware to verify JWT token
 const authMiddleware = async (req, res, next) => {
   try {
@@ -124,9 +122,7 @@ const adminMiddleware = async (req, res, next) => {
     
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
     
-    // Admin token kontrolü
     if (!decoded.adminAccess && !decoded.isAdmin) {
-      // User token varsa admin kontrolü yap
       if (decoded.userId) {
         const user = await User.findById(decoded.userId);
         if (!user || !user.isAdmin) {
@@ -150,13 +146,14 @@ const adminMiddleware = async (req, res, next) => {
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'healthy', timestamp: new Date().toISOString() });
 });
+
+// Assessment Results Routes (Admin)
 app.get('/api/assessment/results', adminMiddleware, async (req, res) => {
   try {
     const results = await AssessmentResult.find()
       .select('gender age education score submittedAt')
       .sort({ submittedAt: -1 });
     
-    // Format results for frontend
     const formattedResults = results.map((result, index) => ({
       id: result._id,
       gender: result.gender,
@@ -173,26 +170,66 @@ app.get('/api/assessment/results', adminMiddleware, async (req, res) => {
     res.status(500).json({ error: 'Sonuçlar getirilemedi' });
   }
 });
+
+app.get('/api/assessment/results/stats', adminMiddleware, async (req, res) => {
+  try {
+    const results = await AssessmentResult.find();
+    
+    const totalResults = results.length;
+    const avgScore = results.length > 0 
+      ? (results.reduce((sum, r) => sum + r.score, 0) / results.length).toFixed(2)
+      : 0;
+    
+    const scores = results.map(r => r.score);
+    const highestScore = scores.length > 0 ? Math.max(...scores) : 0;
+    const lowestScore = scores.length > 0 ? Math.min(...scores) : 0;
+    
+    const ages = results.map(r => r.age || 0).filter(a => a > 0);
+    const avgAge = ages.length > 0 
+      ? (ages.reduce((sum, a) => sum + a, 0) / ages.length).toFixed(1)
+      : 0;
+    
+    const genderDistribution = results.reduce((acc, r) => {
+      acc[r.gender] = (acc[r.gender] || 0) + 1;
+      return acc;
+    }, {});
+    
+    const educationDistribution = results.reduce((acc, r) => {
+      acc[r.education] = (acc[r.education] || 0) + 1;
+      return acc;
+    }, {});
+    
+    res.json({
+      totalResults,
+      avgScore,
+      highestScore,
+      lowestScore,
+      avgAge,
+      genderDistribution,
+      educationDistribution
+    });
+  } catch (error) {
+    console.error('Fetch stats error:', error);
+    res.status(500).json({ error: 'İstatistikler getirilemedi' });
+  }
+});
+
 // Auth Routes
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { email, password, gender, age, education, school } = req.body;
     
-    // Validate required fields
     if (!email || !password || !gender || !age || !education) {
       return res.status(400).json({ error: 'Tüm alanlar gereklidir' });
     }
     
-    // Check if user exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ error: 'Bu e-mail zaten kayıtlı' });
     }
     
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
     
-    // Create user with additional fields
     const user = new User({
       email,
       password: hashedPassword,
@@ -204,7 +241,6 @@ app.post('/api/auth/register', async (req, res) => {
     
     await user.save();
     
-    // Generate token
     const token = jwt.sign(
       { userId: user._id },
       process.env.JWT_SECRET || 'your-secret-key',
@@ -229,67 +265,21 @@ app.post('/api/auth/register', async (req, res) => {
     res.status(500).json({ error: 'Kayıt başarısız' });
   }
 });
-app.get('/api/assessment/results/stats', adminMiddleware, async (req, res) => {
-  try {
-    const results = await AssessmentResult.find();
-    
-    const totalResults = results.length;
-    const avgScore = results.length > 0 
-      ? (results.reduce((sum, r) => sum + r.score, 0) / results.length).toFixed(2)
-      : 0;
-    
-    const scores = results.map(r => r.score);
-    const highestScore = scores.length > 0 ? Math.max(...scores) : 0;
-    const lowestScore = scores.length > 0 ? Math.min(...scores) : 0;
-    
-    const ages = results.map(r => r.age || 0).filter(a => a > 0);
-    const avgAge = ages.length > 0 
-      ? (ages.reduce((sum, a) => sum + a, 0) / ages.length).toFixed(1)
-      : 0;
-    
-    // Gender distribution
-    const genderDistribution = results.reduce((acc, r) => {
-      acc[r.gender] = (acc[r.gender] || 0) + 1;
-      return acc;
-    }, {});
-    
-    // Education distribution
-    const educationDistribution = results.reduce((acc, r) => {
-      acc[r.education] = (acc[r.education] || 0) + 1;
-      return acc;
-    }, {});
-    
-    res.json({
-      totalResults,
-      avgScore,
-      highestScore,
-      lowestScore,
-      avgAge,
-      genderDistribution,
-      educationDistribution
-    });
-  } catch (error) {
-    console.error('Fetch stats error:', error);
-    res.status(500).json({ error: 'İstatistikler getirilemedi' });
-  }
-});
+
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
     
-    // Find user
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
     
-    // Check password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
     
-    // Generate token
     const token = jwt.sign(
       { userId: user._id },
       process.env.JWT_SECRET || 'your-secret-key',
@@ -314,12 +304,45 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || 
+  bcrypt.hashSync('admin123', 10);
+
+app.post('/api/auth/admin-login', async (req, res) => {
+  try {
+    const { password } = req.body;
+    
+    if (!password) {
+      return res.status(400).json({ error: 'Şifre gereklidir' });
+    }
+    
+    const isValid = await bcrypt.compare(password, ADMIN_PASSWORD_HASH);
+    
+    if (!isValid) {
+      return res.status(401).json({ error: 'Geçersiz şifre' });
+    }
+    
+    const token = jwt.sign(
+      { isAdmin: true, adminAccess: true },
+      process.env.JWT_SECRET || 'your-secret-key',
+      { expiresIn: '24h' }
+    );
+    
+    res.json({
+      token,
+      isAdmin: true,
+      message: 'Yönetici paneline hoş geldiniz'
+    });
+  } catch (error) {
+    console.error('Admin login error:', error);
+    res.status(500).json({ error: 'Giriş başarısız' });
+  }
+});
+
 // Assessment Routes
 app.get('/api/assessment', authMiddleware, async (req, res) => {
   try {
     let assessment = await Assessment.findOne().sort({ createdAt: -1 });
     
-    // Create default assessment if none exists
     if (!assessment) {
       assessment = new Assessment({
         questions: [
@@ -352,14 +375,13 @@ app.get('/api/assessment', authMiddleware, async (req, res) => {
   }
 });
 
-app.post('/api/assessment/submit', authMiddleware, async (req, res) => {
+// **ÖNEMLİ: /api öneki OLMADAN da route ekleyelim**
+app.post('/assessment/submit', authMiddleware, async (req, res) => {
   try {
     const { answers } = req.body;
     
-    // Calculate score (count 'yes' answers)
     const score = Object.values(answers).filter(answer => answer === 'yes').length;
     
-    // Save assessment result
     const assessmentResult = new AssessmentResult({
       userId: req.user._id,
       answers,
@@ -371,11 +393,9 @@ app.post('/api/assessment/submit', authMiddleware, async (req, res) => {
     
     await assessmentResult.save();
     
-    // Update user
     req.user.assessmentAnswers = answers;
     req.user.assessmentScore = score;
     req.user.hasCompletedAssessment = true;
-    // Assign default channels
     req.user.assignedChannels = ['general', 'support'];
     await req.user.save();
     
@@ -391,10 +411,47 @@ app.post('/api/assessment/submit', authMiddleware, async (req, res) => {
     res.status(500).json({ error: 'Anket gönderilemedi' });
   }
 });
+
+// **Normal /api/assessment/submit route'u da tutalım**
+app.post('/api/assessment/submit', authMiddleware, async (req, res) => {
+  try {
+    const { answers } = req.body;
+    
+    const score = Object.values(answers).filter(answer => answer === 'yes').length;
+    
+    const assessmentResult = new AssessmentResult({
+      userId: req.user._id,
+      answers,
+      score,
+      gender: req.user.gender,
+      age: req.user.age,
+      education: req.user.education
+    });
+    
+    await assessmentResult.save();
+    
+    req.user.assessmentAnswers = answers;
+    req.user.assessmentScore = score;
+    req.user.hasCompletedAssessment = true;
+    req.user.assignedChannels = ['general', 'support'];
+    await req.user.save();
+    
+    res.json({ 
+      success: true,
+      score,
+      totalQuestions: 16,
+      percentage: Math.round((score / 16) * 100),
+      assignedChannels: req.user.assignedChannels
+    });
+  } catch (error) {
+    console.error('Assessment submission error:', error);
+    res.status(500).json({ error: 'Anket gönderilemedi' });
+  }
+});
+
 // Channel Routes
 app.get('/api/channels', authMiddleware, async (req, res) => {
   try {
-    // Get all channels (or filter by user's assigned channels)
     const query = req.user.isAdmin 
       ? {} 
       : { name: { $in: req.user.assignedChannels || [] } };
@@ -405,44 +462,9 @@ app.get('/api/channels', authMiddleware, async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch channels' });
   }
 });
-const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || 
-  bcrypt.hashSync('admin123', 10);
 
-app.post('/api/auth/admin-login', async (req, res) => {
-  try {
-    const { password } = req.body;
-    
-    if (!password) {
-      return res.status(400).json({ error: 'Şifre gereklidir' });
-    }
-    
-    // Compare password with hash
-    const isValid = await bcrypt.compare(password, ADMIN_PASSWORD_HASH);
-    
-    if (!isValid) {
-      return res.status(401).json({ error: 'Geçersiz şifre' });
-    }
-    
-    // Generate admin token (valid for 24 hours)
-    const token = jwt.sign(
-      { isAdmin: true, adminAccess: true },
-      process.env.JWT_SECRET || 'your-secret-key',
-      { expiresIn: '24h' }
-    );
-    
-    res.json({
-      token,
-      isAdmin: true,
-      message: 'Yönetici paneline hoş geldiniz'
-    });
-  } catch (error) {
-    console.error('Admin login error:', error);
-    res.status(500).json({ error: 'Giriş başarısız' });
-  }
-});
 app.get('/api/channels/all', authMiddleware, async (req, res) => {
   try {
-    // Get all public channels for browsing
     const channels = await Channel.find({ isPublic: true });
     res.json(channels);
   } catch (error) {
@@ -478,7 +500,6 @@ app.post('/api/channels/:channelId/join', authMiddleware, async (req, res) => {
       return res.status(403).json({ error: 'Channel is private' });
     }
     
-    // Add channel to user's assigned channels
     if (!req.user.assignedChannels.includes(channel.name)) {
       req.user.assignedChannels.push(channel.name);
       await req.user.save();
@@ -555,7 +576,6 @@ app.post('/api/channels/:channelId/messages', authMiddleware, async (req, res) =
     
     await message.save();
     
-    // Return the saved message with all fields
     res.status(201).json({
       _id: message._id,
       channelId: message.channelId,
@@ -574,16 +594,11 @@ app.post('/api/channels/:channelId/messages', authMiddleware, async (req, res) =
 app.get('/api/profile', authMiddleware, async (req, res) => {
   try {
     const assessmentAnswers = req.user.assessmentAnswers || {};
-
-    // Toplam soru sayısı
     const totalQuestions = Object.keys(assessmentAnswers).length;
-
-    // Toplam "yes" sayısı
     const totalScore = Object.values(assessmentAnswers).reduce(
       (acc, val) => acc + (val.toLowerCase() === "yes" ? 1 : 0),
       0
     );
-
     const percentage = totalQuestions > 0 ? Math.round((totalScore / totalQuestions) * 100) : 0;
 
     res.json({
@@ -602,8 +617,6 @@ app.get('/api/profile', authMiddleware, async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch profile' });
   }
 });
-
-
 
 app.put('/api/profile', authMiddleware, async (req, res) => {
   try {
@@ -639,7 +652,7 @@ app.put('/api/admin/assessment', authMiddleware, adminMiddleware, async (req, re
     res.status(500).json({ error: 'Failed to update assessment' });
   }
 });
- const a =  process.env.REACT_APP_AGORA_APP_ID;
+
 // Agora Routes
 app.get('/api/agora/token', authMiddleware, async (req, res) => {
   try {
@@ -697,7 +710,6 @@ app.get('/api/agora/rtc-token', authMiddleware, async (req, res) => {
     });
   }
 });
-
 
 // Initialize default channels
 async function initializeDefaultChannels() {
