@@ -7,7 +7,6 @@ const jwt = require('jsonwebtoken');
 const dotenv = require('dotenv');
 const agoraService = require('./agoraService');
 
-
 dotenv.config();
 
 const app = express();
@@ -22,8 +21,9 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/support-p
   useUnifiedTopology: true
 }).then(() => console.log('MongoDB connected'))
   .catch(err => console.error('MongoDB connection error:', err));
+
 console.log('AGORA_APP_ID:', process.env.AGORA_APP_ID);
-console.log('AGORA_APP_CERTIFICATE:', process.env.AGORA_APP_CERTIFICATE);
+console.log('AGORA_APP_CERTIFICATE:', process.env.AGORA_APP_CERTIFICATE ? '***configured***' : 'missing');
 
 // Models
 const UserSchema = new mongoose.Schema({
@@ -35,12 +35,10 @@ const UserSchema = new mongoose.Schema({
   hasCompletedAssessment: { type: Boolean, default: false },
   assessmentAnswers: Object,
   assessmentScore: { type: Number, default: 0 },
-  // YENİ ALANLAR EKLE:
-  gender: String,        // 'Erkek', 'Kadın', 'Diğer'
+  gender: String,
   age: Number,
-  education: String,     // 'İlkokul', 'Ortaokul', 'Lise', 'Üniversite', 'Okuyorum', 'Mezun'
+  education: String,
   school: String,
-  // SON:
   assignedChannels: [String],
   isAdmin: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now }
@@ -61,7 +59,9 @@ const AssessmentResultSchema = new mongoose.Schema({
   education: String,
   submittedAt: { type: Date, default: Date.now }
 });
+
 const AssessmentResult = mongoose.model('AssessmentResult', AssessmentResultSchema);
+
 const ChannelSchema = new mongoose.Schema({
   name: { type: String, required: true, unique: true },
   category: { type: String, required: true },
@@ -94,7 +94,7 @@ const User = mongoose.model('User', UserSchema);
 const Channel = mongoose.model('Channel', ChannelSchema);
 const Message = mongoose.model('Message', MessageSchema);
 const Assessment = mongoose.model('Assessment', AssessmentSchema);
-console.log(this.appId, this.appCertificate)
+
 // Middleware to verify JWT token
 const authMiddleware = async (req, res, next) => {
   try {
@@ -150,6 +150,7 @@ const adminMiddleware = async (req, res, next) => {
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'healthy', timestamp: new Date().toISOString() });
 });
+
 app.get('/api/assessment/results', adminMiddleware, async (req, res) => {
   try {
     const results = await AssessmentResult.find()
@@ -173,6 +174,7 @@ app.get('/api/assessment/results', adminMiddleware, async (req, res) => {
     res.status(500).json({ error: 'Sonuçlar getirilemedi' });
   }
 });
+
 // Auth Routes
 app.post('/api/auth/register', async (req, res) => {
   try {
@@ -229,6 +231,7 @@ app.post('/api/auth/register', async (req, res) => {
     res.status(500).json({ error: 'Kayıt başarısız' });
   }
 });
+
 app.get('/api/assessment/results/stats', adminMiddleware, async (req, res) => {
   try {
     const results = await AssessmentResult.find();
@@ -273,6 +276,7 @@ app.get('/api/assessment/results/stats', adminMiddleware, async (req, res) => {
     res.status(500).json({ error: 'İstatistikler getirilemedi' });
   }
 });
+
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -391,6 +395,7 @@ app.post('/api/assessment/submit', authMiddleware, async (req, res) => {
     res.status(500).json({ error: 'Anket gönderilemedi' });
   }
 });
+
 // Channel Routes
 app.get('/api/channels', authMiddleware, async (req, res) => {
   try {
@@ -405,6 +410,7 @@ app.get('/api/channels', authMiddleware, async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch channels' });
   }
 });
+
 const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || 
   bcrypt.hashSync('admin123', 10);
 
@@ -440,6 +446,7 @@ app.post('/api/auth/admin-login', async (req, res) => {
     res.status(500).json({ error: 'Giriş başarısız' });
   }
 });
+
 app.get('/api/channels/all', authMiddleware, async (req, res) => {
   try {
     // Get all public channels for browsing
@@ -603,8 +610,6 @@ app.get('/api/profile', authMiddleware, async (req, res) => {
   }
 });
 
-
-
 app.put('/api/profile', authMiddleware, async (req, res) => {
   try {
     const { displayName, bio, isAnonymous } = req.body;
@@ -639,7 +644,7 @@ app.put('/api/admin/assessment', authMiddleware, adminMiddleware, async (req, re
     res.status(500).json({ error: 'Failed to update assessment' });
   }
 });
- const a =  process.env.REACT_APP_AGORA_APP_ID;
+
 // Agora Routes
 app.get('/api/agora/token', authMiddleware, async (req, res) => {
   try {
@@ -698,6 +703,17 @@ app.get('/api/agora/rtc-token', authMiddleware, async (req, res) => {
   }
 });
 
+// Graceful shutdown handler
+process.on('SIGTERM', () => {
+  console.log('SIGTERM signal received: closing HTTP server');
+  server.close(() => {
+    console.log('HTTP server closed');
+    mongoose.connection.close(false, () => {
+      console.log('MongoDB connection closed');
+      process.exit(0);
+    });
+  });
+});
 
 // Initialize default channels
 async function initializeDefaultChannels() {
@@ -720,7 +736,7 @@ async function initializeDefaultChannels() {
 
 // Start server
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, async () => {
+const server = app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
   await initializeDefaultChannels();
 });
