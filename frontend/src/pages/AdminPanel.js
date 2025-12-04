@@ -175,7 +175,7 @@ if (filters.school) {
     });
   };
 
-  const exportToCSV = () => {
+const exportToCSV = () => {
     const headers = ['ID', 'Yaş', 'Cinsiyet', 'Eğitim', 'Puan', 'Yüzde'];
     const csvContent = [
       headers.join(','),
@@ -195,6 +195,74 @@ if (filters.school) {
     
     link.setAttribute('href', url);
     link.setAttribute('download', `anket-sonuclari-${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const exportToSPSS = () => {
+    // Okulları numaralandır
+    const schools = [...new Set(filteredResults.map(r => r.education).filter(Boolean))].sort();
+    const schoolMap = {};
+    schools.forEach((school, index) => {
+      schoolMap[school] = index + 1;
+    });
+
+    // Soru sayısını belirle (16 soru olduğunu varsayıyoruz)
+    const totalQuestions = 16;
+    
+    // SPSS formatında veri oluştur
+    let spssContent = '';
+    
+    // Her katılımcı için
+    filteredResults.forEach((result, index) => {
+      const row = [];
+      
+      // 1. Sütun: Katılımcı ID (K1, K2, ...)
+      row.push(index + 1);
+      
+      // 2. Sütun: Okul (numaralandırılmış)
+      const schoolCode = result.education ? schoolMap[result.education] : 0;
+      row.push(schoolCode);
+      
+      // 3-18. Sütunlar: Soru cevapları (1=evet, 0=hayır)
+      const answers = result.answers || {};
+      for (let i = 1; i <= totalQuestions; i++) {
+        const questionKey = `q${i}`;
+        const answer = answers[questionKey];
+        // 'yes' ise 1, 'no' ise 0
+        const value = answer && answer.toLowerCase() === 'yes' ? 1 : 0;
+        row.push(value);
+      }
+      
+      // Satırı boşluklarla ayırarak ekle
+      spssContent += row.join(' ') + '\n';
+    });
+
+    // Kodlama anahtarını dosyanın başına ekle (yorum satırı olarak)
+    let headerComment = '* SPSS Veri Dosyası\n';
+    headerComment += '* Sütunlar:\n';
+    headerComment += '* 1: Katılımcı ID\n';
+    headerComment += '* 2: Okul Kodu\n';
+    headerComment += '*    Okul Kodları:\n';
+    schools.forEach((school, index) => {
+      headerComment += `*    ${index + 1} = ${school}\n`;
+    });
+    headerComment += '* 3-18: Soru Cevapları (1=Evet, 0=Hayır)\n';
+    headerComment += '*\n';
+    headerComment += '* Veri:\n';
+    
+    const finalContent = headerComment + spssContent;
+
+    // Dosyayı indir
+    const blob = new Blob([finalContent], { type: 'text/plain;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', `spss-data-${new Date().toISOString().split('T')[0]}.dat`);
     link.style.visibility = 'hidden';
     
     document.body.appendChild(link);
@@ -467,6 +535,13 @@ if (filters.school) {
                     >
                       <Download className="w-4 h-4" />
                       CSV İndir
+                    </button>
+                     <button
+                      onClick={exportToSPSS}
+                      className="px-4 py-2 rounded bg-green-600 hover:bg-green-700 text-white transition flex items-center gap-2"
+                    >
+                      <Download className="w-4 h-4" />
+                     SPSS indir
                     </button>
                   </div>
                 </div>
