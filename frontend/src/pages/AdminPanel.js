@@ -175,32 +175,7 @@ if (filters.school) {
     });
   };
 
-const exportToCSV = () => {
-    const headers = ['ID', 'Yaş', 'Cinsiyet', 'Eğitim', 'Puan', 'Yüzde'];
-    const csvContent = [
-      headers.join(','),
-      ...filteredResults.map(r => [
-        r.anonId,
-        r.age || '-',
-        r.gender || '-',
-        r.education || '-',
-        r.score || 0,
-        `${r.percentage || 0}%`
-      ].join(','))
-    ].join('\n');
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    
-    link.setAttribute('href', url);
-    link.setAttribute('download', `anket-sonuclari-${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
 
     const exportToCSV = () => {
     const headers = ['ID', 'Yaş', 'Cinsiyet', 'Eğitim', 'Puan', 'Yüzde'];
