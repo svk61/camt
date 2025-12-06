@@ -666,6 +666,6 @@ if (filters.school) {
       </div>
     </div>
   );
-}
+
 
 export default AdminPanel;
