@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Download, Filter, LogOut, Lock } from 'lucide-react';
 
 function AdminPanel() {
-  const [view, setView] = useState('login'); // 'login' | 'results'
+  const [view, setView] = useState('login'); // 'login' | 'results
   const [adminPassword, setAdminPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [loading, setLoading] = useState(false);
