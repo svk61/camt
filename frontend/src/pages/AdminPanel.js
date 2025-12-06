@@ -202,67 +202,26 @@ const exportToCSV = () => {
     document.body.removeChild(link);
   };
 
-  const exportToSPSS = () => {
-    // Okulları numaralandır
-    const schools = [...new Set(filteredResults.map(r => r.education).filter(Boolean))].sort();
-    const schoolMap = {};
-    schools.forEach((school, index) => {
-      schoolMap[school] = index + 1;
-    });
+    const exportToCSV = () => {
+    const headers = ['ID', 'Yaş', 'Cinsiyet', 'Eğitim', 'Puan', 'Yüzde'];
+    const csvContent = [
+      headers.join(','),
+      ...filteredResults.map(r => [
+        r.anonId,
+        r.age || '-',
+        r.gender || '-',
+        r.education || '-',
+        r.score || 0,
+        `${r.percentage || 0}%`
+      ].join(','))
+    ].join('\n');
 
-    // Soru sayısını belirle (16 soru olduğunu varsayıyoruz)
-    const totalQuestions = 16;
-    
-    // SPSS formatında veri oluştur
-    let spssContent = '';
-    
-    // Her katılımcı için
-    filteredResults.forEach((result, index) => {
-      const row = [];
-      
-      // 1. Sütun: Katılımcı ID (K1, K2, ...)
-      row.push(index + 1);
-      
-      // 2. Sütun: Okul (numaralandırılmış)
-      const schoolCode = result.education ? schoolMap[result.education] : 0;
-      row.push(schoolCode);
-      
-      // 3-18. Sütunlar: Soru cevapları (1=evet, 0=hayır)
-      const answers = result.answers || {};
-      for (let i = 1; i <= totalQuestions; i++) {
-        const questionKey = `q${i}`;
-        const answer = answers[questionKey];
-        // 'yes' ise 1, 'no' ise 0
-        const value = answer && answer.toLowerCase() === 'yes' ? 1 : 0;
-        row.push(value);
-      }
-      
-      // Satırı boşluklarla ayırarak ekle
-      spssContent += row.join(' ') + '\n';
-    });
-
-    // Kodlama anahtarını dosyanın başına ekle (yorum satırı olarak)
-    let headerComment = '* SPSS Veri Dosyası\n';
-    headerComment += '* Sütunlar:\n';
-    headerComment += '* 1: Katılımcı ID\n';
-    headerComment += '* 2: Okul Kodu\n';
-    headerComment += '*    Okul Kodları:\n';
-    schools.forEach((school, index) => {
-      headerComment += `*    ${index + 1} = ${school}\n`;
-    });
-    headerComment += '* 3-18: Soru Cevapları (1=Evet, 0=Hayır)\n';
-    headerComment += '*\n';
-    headerComment += '* Veri:\n';
-    
-    const finalContent = headerComment + spssContent;
-
-    // Dosyayı indir
-    const blob = new Blob([finalContent], { type: 'text/plain;charset=utf-8;' });
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     
     link.setAttribute('href', url);
-    link.setAttribute('download', `spss-data-${new Date().toISOString().split('T')[0]}.dat`);
+    link.setAttribute('download', `anket-sonuclari-${new Date().toISOString().split('T')[0]}.csv`);
     link.style.visibility = 'hidden';
     
     document.body.appendChild(link);
@@ -270,31 +229,161 @@ const exportToCSV = () => {
     document.body.removeChild(link);
   };
 
-  const calculateStats = () => {
-    if (filteredResults.length === 0) {
-      return {
-        avgScore: 0,
-        highestScore: 0,
-        lowestScore: 0,
-        avgAge: 0
-      };
+  const exportToSPSS = async () => {
+    try {
+      setLoading(true);
+      const adminToken = localStorage.getItem('adminToken');
+      
+      if (!adminToken) {
+        setError('Oturum gereklidir');
+        return;
+      }
+
+      // Detaylı sonuçları yükle (answers dahil)
+      const response = await fetch('https://camt-production.up.railway.app/api/assessment/results', {
+        headers: {
+          'Authorization': `Bearer ${adminToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Veriler yüklenemedi');
+      }
+
+      const fullResults = await response.json();
+      
+      // Okulları numaralandır
+      const schools = [...new Set(fullResults.map(r => r.education).filter(Boolean))].sort();
+      const schoolMap = {};
+      schools.forEach((school, index) => {
+        schoolMap[school] = index + 1;
+      });
+
+      // Soru sayısını belirle
+      const totalQuestions = 16;
+      
+      // CSV başlıkları (ID, Okul, Yaş, Q1-Q16)
+      const headers = ['ID', 'Okul', 'Yas', ...Array.from({length: totalQuestions}, (_, i) => `Q${i + 1}`)];
+      
+      // CSV içeriği
+      const csvRows = [headers.join(',')];
+      
+      // Her katılımcı için
+      fullResults.forEach((result, index) => {
+        const row = [];
+        
+        // 1. Sütun: Katılımcı ID (1, 2, 3, ...)
+        row.push(index + 1);
+        
+        // 2. Sütun: Okul (numaralandırılmış)
+        const schoolCode = result.education ? schoolMap[result.education] : 0;
+        row.push(schoolCode);
+        
+        // 3. Sütun: Yaş
+        row.push(result.age || 0);
+        
+        // 4-19. Sütunlar: Soru cevapları (1=evet, 0=hayır)
+        const answers = result.answers || {};
+        
+        for (let i = 1; i <= totalQuestions; i++) {
+          const questionKey = `q${i}`;
+          const answer = answers[questionKey];
+          
+          // Cevabı kontrol et ve 1/0'a çevir
+          let value = 0;
+          if (answer) {
+            const lowerAnswer = String(answer).toLowerCase().trim();
+            if (lowerAnswer === 'yes' || lowerAnswer === 'evet' || lowerAnswer === '1' || lowerAnswer === 'true') {
+              value = 1;
+            }
+          }
+          
+          row.push(value);
+        }
+        
+        csvRows.push(row.join(','));
+      });
+
+      const csvContent = csvRows.join('\n');
+
+      // Kodlama bilgisi dosyası oluştur (ayrı txt)
+      let codeBookContent = 'SPSS Veri Kodlama Klavuzu\n';
+      codeBookContent += '=========================\n\n';
+      codeBookContent += 'Tarih: ' + new Date().toLocaleDateString('tr-TR') + '\n';
+      codeBookContent += 'Toplam Katılımcı: ' + fullResults.length + '\n\n';
+      codeBookContent += 'SÜTUN AÇIKLAMALARI:\n';
+      codeBookContent += '-------------------\n';
+      codeBookContent += '1. ID: Katılımcı numarası (1, 2, 3, ...)\n';
+      codeBookContent += '2. Okul: Okul kodu\n';
+      codeBookContent += '3. Yas: Katılımcının yaşı\n';
+      codeBookContent += '4-19. Q1-Q16: Soru cevapları (1=Evet, 0=Hayır)\n\n';
+      codeBookContent += 'OKUL KODLARI:\n';
+      codeBookContent += '-------------\n';
+      schools.forEach((school, index) => {
+        codeBookContent += `${index + 1} = ${school}\n`;
+      });
+      codeBookContent += '\n';
+      codeBookContent += 'SPSS İÇE AKTARMA KOMUTLARI:\n';
+      codeBookContent += '----------------------------\n';
+      codeBookContent += 'GET DATA\n';
+      codeBookContent += '  /TYPE=TXT\n';
+      codeBookContent += '  /FILE="spss-anket.csv"\n';
+      codeBookContent += '  /DELIMITERS=","\n';
+      codeBookContent += '  /FIRSTCASE=2\n';
+      codeBookContent += '  /VARIABLES=\n';
+      codeBookContent += '  ID F3.0\n';
+      codeBookContent += '  Okul F2.0\n';
+      codeBookContent += '  Yas F3.0\n';
+      for (let i = 1; i <= totalQuestions; i++) {
+        codeBookContent += `  Q${i} F1.0\n`;
+      }
+      codeBookContent += '\nVALUE LABELS\n';
+      codeBookContent += '  Okul\n';
+      schools.forEach((school, index) => {
+        codeBookContent += `    ${index + 1} "${school}"\n`;
+      });
+      codeBookContent += '  /Q1 TO Q16\n';
+      codeBookContent += '    0 "Hayır"\n';
+      codeBookContent += '    1 "Evet".\n\n';
+      codeBookContent += 'EXECUTE.\n';
+
+      // CSV dosyasını indir
+      const csvBlob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const csvLink = document.createElement('a');
+      const csvUrl = URL.createObjectURL(csvBlob);
+      
+      csvLink.setAttribute('href', csvUrl);
+      csvLink.setAttribute('download', `spss-anket-${new Date().toISOString().split('T')[0]}.csv`);
+      csvLink.style.visibility = 'hidden';
+      
+      document.body.appendChild(csvLink);
+      csvLink.click();
+      document.body.removeChild(csvLink);
+
+      // Kodlama klavuzunu indir
+      setTimeout(() => {
+        const codeBlob = new Blob([codeBookContent], { type: 'text/plain;charset=utf-8;' });
+        const codeLink = document.createElement('a');
+        const codeUrl = URL.createObjectURL(codeBlob);
+        
+        codeLink.setAttribute('href', codeUrl);
+        codeLink.setAttribute('download', `spss-kodlama-klavuzu-${new Date().toISOString().split('T')[0]}.txt`);
+        codeLink.style.visibility = 'hidden';
+        
+        document.body.appendChild(codeLink);
+        codeLink.click();
+        document.body.removeChild(codeLink);
+      }, 500);
+      
+      setError('');
+    } catch (err) {
+      console.error('SPSS export error:', err);
+      setError('SPSS dosyası oluşturulamadı: ' + err.message);
+    } finally {
+      setLoading(false);
     }
-
-    const scores = filteredResults.map(r => r.score || 0);
-    return {
-      avgScore: (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2),
-      highestScore: Math.max(...scores),
-      lowestScore: Math.min(...scores),
-      avgAge: (filteredResults.reduce((sum, r) => sum + (r.age || 0), 0) / filteredResults.length).toFixed(1)
-    };
   };
-
-  const handleLogout = () => {
-    localStorage.removeItem('adminToken');
-    setView('login');
-    setAdminPassword('');
-    setResults([]);
-    setFilteredResults([]);
   };
 
   // LOGIN VIEW
