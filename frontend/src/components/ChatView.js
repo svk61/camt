@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, Hash, User, Settings, LogOut, Mic, MicOff, PhoneOff } from 'lucide-react';
 import API from '../services/api';
-import { AgoraRTC, AgoraRTM } from '../services/agora';
+import { AgoraRTC, AgoraRTM } from '../services/agoraService';
 import ProfilePanel from './ProfilePanel';
 import ChannelBrowser from './ChannelBrowser';
 import VoiceChat from './Voicechat';

@@ -203,8 +203,39 @@ if (filters.school) {
     link.click();
     document.body.removeChild(link);
   };
+ const handleLogout = () => {
+    localStorage.removeItem('adminToken');
+    setView('login');
+    setResults([]);
+    setFilteredResults([]);
+    setError('');
+  };
 
-  const exportToSPSS = async () => {
+  const calculateStats = () => {
+    if (filteredResults.length === 0) {
+      return {
+        avgScore: '0.0',
+        highestScore: '0',
+        avgAge: '0.0'
+      };
+    }
+
+    const totalScore = filteredResults.reduce((sum, r) => sum + (r.score || 0), 0);
+    const avgScore = (totalScore / filteredResults.length).toFixed(1);
+    
+    const highestScore = Math.max(...filteredResults.map(r => r.score || 0));
+    
+    const totalAge = filteredResults.reduce((sum, r) => sum + (r.age || 0), 0);
+    const avgAge = (totalAge / filteredResults.length).toFixed(1);
+
+    return {
+      avgScore,
+      highestScore: highestScore.toString(),
+      avgAge
+    };
+  };
+
+   const exportToSPSS = async () => {
     try {
       setLoading(true);
       const adminToken = localStorage.getItem('adminToken');
@@ -227,6 +258,9 @@ if (filters.school) {
       }
 
       const fullResults = await response.json();
+      
+      console.log('Full results from API:', fullResults); // Debug
+      console.log('First result answers:', fullResults[0]?.answers); // Debug
       
       // Okulları numaralandır
       const schools = [...new Set(fullResults.map(r => r.education).filter(Boolean))].sort();
@@ -261,9 +295,13 @@ if (filters.school) {
         // 4-19. Sütunlar: Soru cevapları (1=evet, 0=hayır)
         const answers = result.answers || {};
         
+        console.log(`Participant ${index + 1} answers:`, answers); // Debug
+        
         for (let i = 1; i <= totalQuestions; i++) {
           const questionKey = `q${i}`;
           const answer = answers[questionKey];
+          
+          console.log(`  ${questionKey}: ${answer}`); // Debug her soru için
           
           // Cevabı kontrol et ve 1/0'a çevir
           let value = 0;
@@ -359,7 +397,7 @@ if (filters.school) {
       setLoading(false);
     }
   };
-  };
+  
 
   // LOGIN VIEW
   if (view === 'login') {
@@ -666,6 +704,6 @@ if (filters.school) {
       </div>
     </div>
   );
-
+}
 
 export default AdminPanel;

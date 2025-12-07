@@ -150,8 +150,9 @@ app.get('/health', (req, res) => {
 // Assessment Results Routes (Admin)
 app.get('/api/assessment/results', adminMiddleware, async (req, res) => {
   try {
+    // answers alanını da seç
     const results = await AssessmentResult.find()
-      .select('gender age education score submittedAt')
+      .select('gender age education score submittedAt answers')
       .sort({ submittedAt: -1 });
     
     const formattedResults = results.map((result, index) => ({
@@ -161,8 +162,11 @@ app.get('/api/assessment/results', adminMiddleware, async (req, res) => {
       education: result.education,
       score: result.score,
       percentage: Math.round((result.score / 16) * 100),
-      submittedAt: result.submittedAt
+      submittedAt: result.submittedAt,
+      answers: result.answers || {}  // answers objesini ekle
     }));
+    
+    console.log('Sample result with answers:', formattedResults[0]); // Debug için
     
     res.json(formattedResults);
   } catch (error) {

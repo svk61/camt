@@ -1,5 +1,5 @@
-// Real Agora RTM Integration
-import AgoraRTMSDK from 'agora-rtm-sdk';
+// src/services/agoraService.js - Frontend Agora RTM Integration
+import AgoraRTM from 'agora-rtm-sdk';
 
 class AgoraRTMService {
   constructor() {
@@ -18,7 +18,7 @@ class AgoraRTMService {
   async initialize(appId, userId, token) {
     try {
       // Create RTM client
-      this.client = AgoraRTMSDK.createInstance(appId);
+      this.client = AgoraRTM.createInstance(appId);
       this.currentUserId = userId;
 
       // Login to RTM
@@ -153,29 +153,4 @@ class AgoraRTMService {
   }
 }
 
-// Real Agora RTC (for voice calls)
-class AgoraRTCService {
-  constructor() {
-    this.client = null;
-    this.localAudioTrack = null;
-  }
-
-  async createClient(mode = 'rtc', codec = 'vp8') {
-    const AgoraRTCSDK = (await import('agora-rtc-sdk-ng')).default;
-    this.client = AgoraRTCSDK.createClient({ mode, codec });
-    return this.client;
-  }
-
-  async createMicrophoneAudioTrack() {
-    const AgoraRTCSDK = (await import('agora-rtc-sdk-ng')).default;
-    this.localAudioTrack = await AgoraRTCSDK.createMicrophoneAudioTrack();
-    return this.localAudioTrack;
-  }
-}
-
-// Export instances
-const agoraRTMService = new AgoraRTMService();
-const agoraRTCService = new AgoraRTCService();
-
-export { agoraRTCService as AgoraRTC, agoraRTMService as AgoraRTM };
-export default agoraRTMService;
+export default new AgoraRTMService();
