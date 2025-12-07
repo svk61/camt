@@ -235,7 +235,7 @@ if (filters.school) {
     };
   };
 
-   const exportToSPSS = async () => {
+  const exportToSPSS = async () => {
     try {
       setLoading(true);
       const adminToken = localStorage.getItem('adminToken');
@@ -259,8 +259,8 @@ if (filters.school) {
 
       const fullResults = await response.json();
       
-      console.log('Full results from API:', fullResults); // Debug
-      console.log('First result answers:', fullResults[0]?.answers); // Debug
+      console.log('Full results from API:', fullResults);
+      console.log('First result answers:', fullResults[0]?.answers);
       
       // Okulları numaralandır
       const schools = [...new Set(fullResults.map(r => r.education).filter(Boolean))].sort();
@@ -272,11 +272,11 @@ if (filters.school) {
       // Soru sayısını belirle
       const totalQuestions = 16;
       
-      // CSV başlıkları (ID, Okul, Yaş, Q1-Q16)
-      const headers = ['1', '2', '3', ...Array.from({length: totalQuestions}, (_, i) => `${i + 4}`)];
+      // CSV başlıkları - SPSS için değişken isimleri
+      const headers = ['ID', 'Okul', 'Yas', ...Array.from({length: totalQuestions}, (_, i) => `Q${i + 1}`)];
       
       // CSV içeriği
-      const csvRows = [headers.join(',')];
+      const csvRows = [headers.join(';')]; // Noktalı virgül kullan
       
       // Her katılımcı için
       fullResults.forEach((result, index) => {
@@ -295,13 +295,13 @@ if (filters.school) {
         // 4-19. Sütunlar: Soru cevapları (1=evet, 0=hayır)
         const answers = result.answers || {};
         
-        console.log(`Participant ${index + 1} answers:`, answers); // Debug
+        console.log(`Participant ${index + 1} answers:`, answers);
         
         for (let i = 1; i <= totalQuestions; i++) {
           const questionKey = `q${i}`;
           const answer = answers[questionKey];
           
-          console.log(`  ${questionKey}: ${answer}`); // Debug her soru için
+          console.log(`  ${questionKey}: ${answer}`);
           
           // Cevabı kontrol et ve 1/0'a çevir
           let value = 0;
@@ -315,54 +315,79 @@ if (filters.school) {
           row.push(value);
         }
         
-        csvRows.push(row.join(','));
+        csvRows.push(row.join(';')); // Noktalı virgül kullan
       });
 
       const csvContent = csvRows.join('\n');
 
-      // Kodlama bilgisi dosyası oluştur (ayrı txt)
+      // SPSS syntax dosyası oluştur
+      let spssContent = '* SPSS Veri İçe Aktarma Komutu.\n';
+      spssContent += '* Oluşturulma Tarihi: ' + new Date().toLocaleString('tr-TR') + '.\n';
+      spssContent += '* Toplam Katılımcı: ' + fullResults.length + '.\n\n';
+      
+      spssContent += 'GET DATA\n';
+      spssContent += '  /TYPE=TXT\n';
+      spssContent += '  /FILE="spss-anket-' + new Date().toISOString().split('T')[0] + '.csv"\n';
+      spssContent += '  /ENCODING=\'UTF8\'\n';
+      spssContent += '  /DELCASE=LINE\n';
+      spssContent += '  /DELIMITERS=";"\n';
+      spssContent += '  /ARRANGEMENT=DELIMITED\n';
+      spssContent += '  /FIRSTCASE=2\n';
+      spssContent += '  /IMPORTCASE=ALL\n';
+      spssContent += '  /VARIABLES=\n';
+      spssContent += '  ID F8.0\n';
+      spssContent += '  Okul F8.0\n';
+      spssContent += '  Yas F8.0\n';
+      for (let i = 1; i <= totalQuestions; i++) {
+        spssContent += `  Q${i} F8.0\n`;
+      }
+      spssContent += '.\n\n';
+      
+      spssContent += 'EXECUTE.\n\n';
+      
+      // Değişken etiketleri
+      spssContent += 'VARIABLE LABELS\n';
+      spssContent += '  ID "Katılımcı ID"\n';
+      spssContent += '  Okul "Okul Kodu"\n';
+      spssContent += '  Yas "Yaş"\n';
+      for (let i = 1; i <= totalQuestions; i++) {
+        spssContent += `  Q${i} "Soru ${i}"\n`;
+      }
+      spssContent += '.\n\n';
+      
+      // Değer etiketleri
+      spssContent += 'VALUE LABELS\n';
+      spssContent += '  Okul\n';
+      schools.forEach((school, index) => {
+        spssContent += `    ${index + 1} "${school}"\n`;
+      });
+      spssContent += '  /Q1 TO Q16\n';
+      spssContent += '    0 "Hayır"\n';
+      spssContent += '    1 "Evet"\n';
+      spssContent += '.\n\n';
+      
+      spssContent += 'EXECUTE.\n\n';
+      
+      // Kodlama bilgisi dosyası
       let codeBookContent = 'SPSS Veri Kodlama Klavuzu\n';
       codeBookContent += '=========================\n\n';
       codeBookContent += 'Tarih: ' + new Date().toLocaleDateString('tr-TR') + '\n';
       codeBookContent += 'Toplam Katılımcı: ' + fullResults.length + '\n\n';
       codeBookContent += 'SÜTUN AÇIKLAMALARI:\n';
       codeBookContent += '-------------------\n';
-      codeBookContent += '1. ID: Katılımcı numarası (1, 2, 3, ...)\n';
-      codeBookContent += '2. Okul: Okul kodu\n';
-      codeBookContent += '3. Yas: Katılımcının yaşı\n';
-      codeBookContent += '4-19. Q1-Q16: Soru cevapları (1=Evet, 0=Hayır)\n\n';
+      codeBookContent += 'ID: Katılımcı numarası (1, 2, 3, ...)\n';
+      codeBookContent += 'Okul: Okul kodu\n';
+      codeBookContent += 'Yas: Katılımcının yaşı\n';
+      codeBookContent += 'Q1-Q16: Soru cevapları (1=Evet, 0=Hayır)\n\n';
       codeBookContent += 'OKUL KODLARI:\n';
       codeBookContent += '-------------\n';
       schools.forEach((school, index) => {
         codeBookContent += `${index + 1} = ${school}\n`;
       });
-      codeBookContent += '\n';
-      codeBookContent += 'SPSS İÇE AKTARMA KOMUTLARI:\n';
-      codeBookContent += '----------------------------\n';
-      codeBookContent += 'GET DATA\n';
-      codeBookContent += '  /TYPE=TXT\n';
-      codeBookContent += '  /FILE="spss-anket.csv"\n';
-      codeBookContent += '  /DELIMITERS=","\n';
-      codeBookContent += '  /FIRSTCASE=2\n';
-      codeBookContent += '  /VARIABLES=\n';
-      codeBookContent += '  ID F3.0\n';
-      codeBookContent += '  Okul F2.0\n';
-      codeBookContent += '  Yas F3.0\n';
-      for (let i = 1; i <= totalQuestions; i++) {
-        codeBookContent += `  Q${i} F1.0\n`;
-      }
-      codeBookContent += '\nVALUE LABELS\n';
-      codeBookContent += '  Okul\n';
-      schools.forEach((school, index) => {
-        codeBookContent += `    ${index + 1} "${school}"\n`;
-      });
-      codeBookContent += '  /Q1 TO Q16\n';
-      codeBookContent += '    0 "Hayır"\n';
-      codeBookContent += '    1 "Evet".\n\n';
-      codeBookContent += 'EXECUTE.\n';
 
-      // CSV dosyasını indir
-      const csvBlob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      // CSV dosyasını indir (UTF-8 BOM ile)
+      const BOM = '\uFEFF';
+      const csvBlob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
       const csvLink = document.createElement('a');
       const csvUrl = URL.createObjectURL(csvBlob);
       
@@ -373,6 +398,21 @@ if (filters.school) {
       document.body.appendChild(csvLink);
       csvLink.click();
       document.body.removeChild(csvLink);
+
+      // SPSS syntax dosyasını indir
+      setTimeout(() => {
+        const spssBlob = new Blob([spssContent], { type: 'text/plain;charset=utf-8;' });
+        const spssLink = document.createElement('a');
+        const spssUrl = URL.createObjectURL(spssBlob);
+        
+        spssLink.setAttribute('href', spssUrl);
+        spssLink.setAttribute('download', `spss-komutlar-${new Date().toISOString().split('T')[0]}.sps`);
+        spssLink.style.visibility = 'hidden';
+        
+        document.body.appendChild(spssLink);
+        spssLink.click();
+        document.body.removeChild(spssLink);
+      }, 500);
 
       // Kodlama klavuzunu indir
       setTimeout(() => {
@@ -387,9 +427,11 @@ if (filters.school) {
         document.body.appendChild(codeLink);
         codeLink.click();
         document.body.removeChild(codeLink);
-      }, 500);
+      }, 1000);
       
       setError('');
+      alert('3 dosya indirildi:\n1. CSV veri dosyası\n2. SPSS komut dosyası (.sps)\n3. Kodlama klavuzu\n\nSPSS\'te .sps dosyasını açın ve çalıştırın!');
+      
     } catch (err) {
       console.error('SPSS export error:', err);
       setError('SPSS dosyası oluşturulamadı: ' + err.message);
@@ -397,7 +439,6 @@ if (filters.school) {
       setLoading(false);
     }
   };
-  
 
   // LOGIN VIEW
   if (view === 'login') {
