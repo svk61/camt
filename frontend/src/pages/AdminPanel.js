@@ -273,7 +273,7 @@ if (filters.school) {
       const totalQuestions = 16;
       
       // CSV başlıkları (ID, Okul, Yaş, Q1-Q16)
-      const headers = ['ID', 'Okul', 'Yas', ...Array.from({length: totalQuestions}, (_, i) => `Q${i + 1}`)];
+      const headers = ['1', '2', '3', ...Array.from({length: totalQuestions}, (_, i) => `${i + 4}`)];
       
       // CSV içeriği
       const csvRows = [headers.join(',')];
