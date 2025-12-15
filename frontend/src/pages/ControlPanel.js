@@ -4,6 +4,7 @@ import { Trash2, Plus, X, MessageSquare, Users, Settings, BarChart3, Eye } from 
 const API_URL = 'https://camt-production.up.railway.app';
 
 
+
 export default function AdminPanel() {
   const [token, setToken] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -450,19 +451,19 @@ export default function AdminPanel() {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               <div className="bg-white rounded-lg shadow-sm p-6">
                 <div className="text-sm text-gray-600 mb-1">Toplam Katılımcı</div>
-                <div className="text-3xl font-bold text-purple-600">{stats.totalResults}</div>
+                <div className="text-3xl font-bold text-purple-600">{stats.totalResults || 0}</div>
               </div>
               <div className="bg-white rounded-lg shadow-sm p-6">
                 <div className="text-sm text-gray-600 mb-1">Ortalama Skor</div>
-                <div className="text-3xl font-bold text-blue-600">{stats.avgScore}/16</div>
+                <div className="text-3xl font-bold text-blue-600">{stats.avgScore || 0}/16</div>
               </div>
               <div className="bg-white rounded-lg shadow-sm p-6">
                 <div className="text-sm text-gray-600 mb-1">En Yüksek Skor</div>
-                <div className="text-3xl font-bold text-green-600">{stats.highestScore}</div>
+                <div className="text-3xl font-bold text-green-600">{stats.highestScore || 0}</div>
               </div>
               <div className="bg-white rounded-lg shadow-sm p-6">
                 <div className="text-sm text-gray-600 mb-1">Ortalama Yaş</div>
-                <div className="text-3xl font-bold text-orange-600">{stats.avgAge}</div>
+                <div className="text-3xl font-bold text-orange-600">{stats.avgAge || 0}</div>
               </div>
             </div>
 
@@ -470,24 +471,32 @@ export default function AdminPanel() {
               <div className="bg-white rounded-lg shadow-sm p-6">
                 <h3 className="text-lg font-semibold text-gray-800 mb-4">Cinsiyet Dağılımı</h3>
                 <div className="space-y-3">
-                  {Object.entries(stats.genderDistribution).map(([gender, count]) => (
-                    <div key={gender} className="flex items-center justify-between">
-                      <span className="text-gray-700 capitalize">{gender}</span>
-                      <span className="font-semibold text-gray-800">{count}</span>
-                    </div>
-                  ))}
+                  {stats.genderDistribution && Object.keys(stats.genderDistribution).length > 0 ? (
+                    Object.entries(stats.genderDistribution).map(([gender, count]) => (
+                      <div key={gender} className="flex items-center justify-between">
+                        <span className="text-gray-700 capitalize">{gender}</span>
+                        <span className="font-semibold text-gray-800">{count}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-gray-500 text-sm">Henüz veri yok</p>
+                  )}
                 </div>
               </div>
 
               <div className="bg-white rounded-lg shadow-sm p-6">
                 <h3 className="text-lg font-semibold text-gray-800 mb-4">Eğitim Durumu</h3>
                 <div className="space-y-3">
-                  {Object.entries(stats.educationDistribution).map(([edu, count]) => (
-                    <div key={edu} className="flex items-center justify-between">
-                      <span className="text-gray-700">{edu}</span>
-                      <span className="font-semibold text-gray-800">{count}</span>
-                    </div>
-                  ))}
+                  {stats.educationDistribution && Object.keys(stats.educationDistribution).length > 0 ? (
+                    Object.entries(stats.educationDistribution).map(([edu, count]) => (
+                      <div key={edu} className="flex items-center justify-between">
+                        <span className="text-gray-700">{edu}</span>
+                        <span className="font-semibold text-gray-800">{count}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-gray-500 text-sm">Henüz veri yok</p>
+                  )}
                 </div>
               </div>
             </div>
