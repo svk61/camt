@@ -3,6 +3,7 @@ import { Trash2, Plus, X, MessageSquare, Users, Settings, BarChart3, Eye } from 
 
 const API_URL = 'https://camt-production.up.railway.app/api/';
 
+
 export default function AdminPanel() {
   const [token, setToken] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -23,6 +24,13 @@ export default function AdminPanel() {
   
   const [stats, setStats] = useState(null);
   const [assessmentResults, setAssessmentResults] = useState([]);
+  
+  const [confirmDialog, setConfirmDialog] = useState({
+    show: false,
+    title: '',
+    message: '',
+    onConfirm: null
+  });
 
   const handleLogin = async () => {
     try {
@@ -83,21 +91,27 @@ export default function AdminPanel() {
   };
 
   const handleDeleteChannel = async (channelId) => {
-    if (!confirm('Bu kanalı silmek istediğinize emin misiniz?')) return;
-    
-    try {
-      const response = await fetch(`${API_URL}/api/channels/${channelId}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      if (response.ok) {
-        loadChannels();
-        alert('Kanal silindi');
+    setConfirmDialog({
+      show: true,
+      title: 'Kanalı Sil',
+      message: 'Bu kanalı silmek istediğinize emin misiniz?',
+      onConfirm: async () => {
+        try {
+          const response = await fetch(`${API_URL}/api/channels/${channelId}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          
+          if (response.ok) {
+            loadChannels();
+            alert('Kanal silindi');
+          }
+        } catch (error) {
+          alert('Kanal silinemedi');
+        }
+        setConfirmDialog({ show: false, title: '', message: '', onConfirm: null });
       }
-    } catch (error) {
-      alert('Kanal silinemedi');
-    }
+    });
   };
 
   const loadMessages = async (channelId) => {
@@ -129,21 +143,27 @@ export default function AdminPanel() {
   };
 
   const handleClearChannel = async (channelId) => {
-    if (!confirm('Bu kanaldaki TÜM mesajları silmek istediğinize emin misiniz?')) return;
-    
-    try {
-      const response = await fetch(`${API_URL}/api/channels/${channelId}/messages`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      if (response.ok) {
-        loadMessages(channelId);
-        alert('Tüm mesajlar silindi');
+    setConfirmDialog({
+      show: true,
+      title: 'Tüm Mesajları Sil',
+      message: 'Bu kanaldaki TÜM mesajları silmek istediğinize emin misiniz? Bu işlem geri alınamaz.',
+      onConfirm: async () => {
+        try {
+          const response = await fetch(`${API_URL}/api/channels/${channelId}/messages`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          
+          if (response.ok) {
+            loadMessages(channelId);
+            alert('Tüm mesajlar silindi');
+          }
+        } catch (error) {
+          alert('Mesajlar silinemedi');
+        }
+        setConfirmDialog({ show: false, title: '', message: '', onConfirm: null });
       }
-    } catch (error) {
-      alert('Mesajlar silinemedi');
-    }
+    });
   };
 
   const loadStats = async (authToken) => {
@@ -585,6 +605,32 @@ export default function AdminPanel() {
                   İptal
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Dialog */}
+      {confirmDialog.show && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+            <h3 className="text-xl font-bold text-gray-800 mb-4">{confirmDialog.title}</h3>
+            <p className="text-gray-600 mb-6">{confirmDialog.message}</p>
+            <div className="flex space-x-3">
+              <button
+                onClick={() => {
+                  if (confirmDialog.onConfirm) confirmDialog.onConfirm();
+                }}
+                className="flex-1 bg-red-600 text-white py-2 rounded-lg hover:bg-red-700 transition"
+              >
+                Evet, Sil
+              </button>
+              <button
+                onClick={() => setConfirmDialog({ show: false, title: '', message: '', onConfirm: null })}
+                className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300 transition"
+              >
+                İptal
+              </button>
             </div>
           </div>
         </div>
