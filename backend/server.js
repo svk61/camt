@@ -862,7 +862,50 @@ async function initializeDefaultChannels() {
     console.log('✅ Default channels created');
   }
 }
+app.delete('/api/channels/:channelId/messages/:messageId', authMiddleware, async (req, res) => {
+  try {
+    const { channelId, messageId } = req.params;
+    
+    const message = await Message.findOne({ 
+      _id: messageId, 
+      channelId: channelId 
+    });
+    
+    if (!message) {
+      return res.status(404).json({ error: 'Mesaj bulunamadı' });
+    }
+    
+    // Kullanıcı sadece kendi mesajını silebilir (veya admin ise)
+    if (message.userId !== req.user._id.toString() && !req.user.isAdmin) {
+      return res.status(403).json({ error: 'Bu mesajı silme yetkiniz yok' });
+    }
+    
+    await Message.findByIdAndDelete(messageId);
+    
+    res.json({ success: true, message: 'Mesaj silindi' });
+  } catch (error) {
+    console.error('Mesaj silme hatası:', error);
+    res.status(500).json({ error: 'Mesaj silinemedi' });
+  }
+});
 
+// Tüm kanal mesajlarını silme (sadece admin)
+app.delete('/api/channels/:channelId/messages', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { channelId } = req.params;
+    
+    const result = await Message.deleteMany({ channelId: channelId });
+    
+    res.json({ 
+      success: true, 
+      message: `${result.deletedCount} mesaj silindi`,
+      deletedCount: result.deletedCount
+    });
+  } catch (error) {
+    console.error('Kanal mesajları silme hatası:', error);
+    res.status(500).json({ error: 'Mesajlar silinemedi' });
+  }
+});
 // ========================================
 // START SERVER
 // ========================================

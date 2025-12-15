@@ -5,7 +5,7 @@ import LoginView from './pages/LoginView';
 import RegisterView from './pages/RegisterView';
 import AssessmentView from './pages/AssessmentView';
 import ChatView from './pages/ChatView';
-import AdminPanel from './pages/AdminPanel';
+import AdminPanel from './pages/ControlPanel';
 
 // Real API service
 // App.js - Fixed Agora RTM Integration
