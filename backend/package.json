@@ -11,6 +11,7 @@
     "agora-access-token": "^2.0.4",
     "agora-rtc-sdk-ng": "^4.24.1",
     "agora-rtm-sdk": "^1.5.1",
+    "agora-token": "^2.0.5",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",

@@ -1,11 +1,12 @@
-// server.js
+// server.js - Complete Backend with Fixed Agora RTM
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const dotenv = require('dotenv');
-const agoraService = require('./agoraService');
+const { RtcTokenBuilder, RtcRole } = require('agora-access-token');
+const { RtmTokenBuilder, RtmRole } = require('agora-access-token');
 
 dotenv.config();
 
@@ -21,8 +22,9 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/support-p
   useUnifiedTopology: true
 }).then(() => console.log('MongoDB connected'))
   .catch(err => console.error('MongoDB connection error:', err));
+
 console.log('AGORA_APP_ID:', process.env.AGORA_APP_ID);
-console.log('AGORA_APP_CERTIFICATE:', process.env.AGORA_APP_CERTIFICATE);
+console.log('AGORA_APP_CERTIFICATE:', process.env.AGORA_APP_CERTIFICATE ? 'Configured' : 'Missing');
 
 // Models
 const UserSchema = new mongoose.Schema({
@@ -58,7 +60,6 @@ const AssessmentResultSchema = new mongoose.Schema({
   education: String,
   submittedAt: { type: Date, default: Date.now }
 });
-const AssessmentResult = mongoose.model('AssessmentResult', AssessmentResultSchema);
 
 const ChannelSchema = new mongoose.Schema({
   name: { type: String, required: true, unique: true },
@@ -92,6 +93,7 @@ const User = mongoose.model('User', UserSchema);
 const Channel = mongoose.model('Channel', ChannelSchema);
 const Message = mongoose.model('Message', MessageSchema);
 const Assessment = mongoose.model('Assessment', AssessmentSchema);
+const AssessmentResult = mongoose.model('AssessmentResult', AssessmentResultSchema);
 
 // Middleware to verify JWT token
 const authMiddleware = async (req, res, next) => {
@@ -140,7 +142,38 @@ const adminMiddleware = async (req, res, next) => {
   }
 };
 
-// Routes
+// Authentication function for Agora endpoints
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) {
+    return res.status(401).json({ error: 'Access token required' });
+  }
+
+  jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key', (err, user) => {
+    if (err) {
+      return res.status(403).json({ error: 'Invalid or expired token' });
+    }
+    req.user = user;
+    next();
+  });
+}
+
+// Helper function: String to hash
+function hashCode(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return hash;
+}
+
+// ========================================
+// ROUTES
+// ========================================
 
 // Health check
 app.get('/health', (req, res) => {
@@ -150,12 +183,11 @@ app.get('/health', (req, res) => {
 // Assessment Results Routes (Admin)
 app.get('/api/assessment/results', adminMiddleware, async (req, res) => {
   try {
-    // answers alanını da seç
     const results = await AssessmentResult.find()
       .select('gender age education score submittedAt answers')
       .sort({ submittedAt: -1 });
     
-    const formattedResults = results.map((result, index) => ({
+    const formattedResults = results.map((result) => ({
       id: result._id,
       gender: result.gender,
       age: result.age,
@@ -163,10 +195,8 @@ app.get('/api/assessment/results', adminMiddleware, async (req, res) => {
       score: result.score,
       percentage: Math.round((result.score / 16) * 100),
       submittedAt: result.submittedAt,
-      answers: result.answers || {}  // answers objesini ekle
+      answers: result.answers || {}
     }));
-    
-    console.log('Sample result with answers:', formattedResults[0]); // Debug için
     
     res.json(formattedResults);
   } catch (error) {
@@ -379,14 +409,12 @@ app.get('/api/assessment', authMiddleware, async (req, res) => {
   }
 });
 
-// **ÖNEMLİ: /api öneki OLMADAN da route ekleyelim**
-app.post('/assessment/submit', authMiddleware, async (req, res) => {
+app.post('/api/assessment/submit', authMiddleware, async (req, res) => {
   try {
     const { answers } = req.body;
     
     const score = Object.values(answers).filter(answer => answer === 'yes').length;
     
-    // Save assessment result
     const assessmentResult = new AssessmentResult({
       userId: req.user._id,
       answers,
@@ -398,7 +426,6 @@ app.post('/assessment/submit', authMiddleware, async (req, res) => {
     
     await assessmentResult.save();
     
-    // Update user using findByIdAndUpdate to avoid version conflicts
     const updatedUser = await User.findByIdAndUpdate(
       req.user._id,
       {
@@ -429,14 +456,13 @@ app.post('/assessment/submit', authMiddleware, async (req, res) => {
   }
 });
 
-// **Normal /api/assessment/submit route'u da tutalım**
-app.post('/api/assessment/submit', authMiddleware, async (req, res) => {
+// Alternative route without /api prefix
+app.post('/assessment/submit', authMiddleware, async (req, res) => {
   try {
     const { answers } = req.body;
     
     const score = Object.values(answers).filter(answer => answer === 'yes').length;
     
-    // Save assessment result
     const assessmentResult = new AssessmentResult({
       userId: req.user._id,
       answers,
@@ -448,7 +474,6 @@ app.post('/api/assessment/submit', authMiddleware, async (req, res) => {
     
     await assessmentResult.save();
     
-    // Update user using findByIdAndUpdate to avoid version conflicts
     const updatedUser = await User.findByIdAndUpdate(
       req.user._id,
       {
@@ -683,65 +708,143 @@ app.put('/api/admin/assessment', authMiddleware, adminMiddleware, async (req, re
   }
 });
 
-// Agora Routes
-app.get('/api/agora/token', authMiddleware, async (req, res) => {
+// ========================================
+// AGORA ROUTES
+// ========================================
+
+// RTM Token Endpoint (Text Messaging)
+app.get('/api/agora/token', authenticateToken, async (req, res) => {
   try {
-    if (!agoraService.isConfigured()) {
-      console.error('Agora service not configured');
-      return res.status(503).json({ 
-        error: 'Agora service not configured',
-        details: 'Missing AGORA_APP_ID or AGORA_APP_CERTIFICATE'
-      });
-    }
+    console.log('🔹 RTM Token isteği alındı');
     
-    const tokenData = agoraService.generateRtmToken(req.user._id.toString());
-    res.json(tokenData);
+    const AGORA_APP_ID = process.env.AGORA_APP_ID;
+    const AGORA_APP_CERTIFICATE = process.env.AGORA_APP_CERTIFICATE;
+    
+    if (!AGORA_APP_ID || !AGORA_APP_CERTIFICATE) {
+      console.error('❌ Agora credentials eksik!');
+      return res.status(500).json({ error: 'Agora credentials not configured' });
+    }
+
+    // User ID - MongoDB ObjectId as string
+    const userId = req.user.userId.toString();
+    
+    console.log('🔹 RTM Token oluşturuluyor...');
+    console.log('🔹 User ID:', userId);
+    console.log('🔹 APP_ID:', AGORA_APP_ID);
+    console.log('🔹 APP_CERTIFICATE:', AGORA_APP_CERTIFICATE.substring(0, 10) + '...');
+
+    // ⚠️ CRITICAL FIX: For RTM SDK 1.5.x, use 0 for expiration (no expiration)
+    // or use current timestamp + seconds
+    const currentTimestamp = Math.floor(Date.now() / 1000);
+    const expirationTimeInSeconds = 3600 * 24; // 24 hours
+    const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
+
+    console.log('🔹 Current timestamp:', currentTimestamp);
+    console.log('🔹 Expiration timestamp:', privilegeExpiredTs);
+    console.log('🔹 Time until expiration (hours):', expirationTimeInSeconds / 3600);
+
+    // ⚠️ IMPORTANT: Use RtmTokenBuilder.buildToken with exact parameters
+    const token = RtmTokenBuilder.buildToken(
+      AGORA_APP_ID,              // appId
+      AGORA_APP_CERTIFICATE,      // appCertificate
+      userId,                     // userId (string)
+      RtmRole.Rtm_User,          // role
+      privilegeExpiredTs          // privilegeExpiredTs
+    );
+
+    console.log('✅ RTM Token başarıyla oluşturuldu');
+    console.log('Token uzunluğu:', token.length);
+    console.log('Token preview:', token.substring(0, 50) + '...');
+    console.log('Token full:', token);
+
+    res.json({
+      appId: AGORA_APP_ID,
+      token: token,
+      userId: userId,
+      expiresAt: privilegeExpiredTs
+    });
+
   } catch (error) {
-    console.error('RTM token generation error:', error);
+    console.error('❌ RTM Token oluşturma hatası:', error);
+    console.error('Error name:', error.name);
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
     res.status(500).json({ 
-      error: 'Failed to generate Agora token',
+      error: 'Failed to generate RTM token', 
       details: error.message 
     });
   }
 });
 
-app.get('/api/agora/rtc-token', authMiddleware, async (req, res) => {
+// RTC Token Endpoint (Voice Chat)
+app.get('/api/agora/rtc-token', authenticateToken, async (req, res) => {
   try {
     const { channelName } = req.query;
-
-    if (!channelName) {
-      return res.status(400).json({ 
-        error: 'Channel name is required' 
-      });
-    }
-
-    console.log('Request RTC token for channel:', channelName, 'user:', req.user._id);
-
-    if (!agoraService.isConfigured()) {
-      console.error('Agora service not configured');
-      return res.status(503).json({ 
-        error: 'Agora service not configured',
-        details: 'Missing AGORA_APP_ID or AGORA_APP_CERTIFICATE'
-      });
-    }
-
-    const tokenData = agoraService.generateRtcToken(
-      channelName,
-      req.user._id.toString()
-    );
     
-    console.log('RTC token generated successfully');
-    res.json(tokenData);
-  } catch (error) {
-    console.error('RTC token generation error:', error);
-    res.status(500).json({ 
-      error: 'Failed to generate RTC token', 
-      details: error.message 
+    if (!channelName) {
+      return res.status(400).json({ error: 'Channel name is required' });
+    }
+
+    const AGORA_APP_ID = process.env.AGORA_APP_ID;
+    const AGORA_APP_CERTIFICATE = process.env.AGORA_APP_CERTIFICATE;
+
+    if (!AGORA_APP_ID || !AGORA_APP_CERTIFICATE) {
+      return res.status(500).json({ error: 'Agora credentials not configured' });
+    }
+
+    const expirationTimeInSeconds = 86400;
+    const currentTimestamp = Math.floor(Date.now() / 1000);
+    const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
+
+    // RTC needs numeric UID
+    let uid = 0;
+    if (req.user.userId && !isNaN(parseInt(req.user.userId))) {
+      uid = parseInt(req.user.userId);
+    } else {
+      uid = Math.abs(hashCode(req.user.userId.toString()));
+    }
+
+    // Get username
+    let username = 'Kullanıcı';
+    try {
+      const user = await User.findById(req.user.userId);
+      username = user?.displayName || user?.email?.split('@')[0] || `User${uid}`;
+    } catch (error) {
+      console.log('User info fetch failed, using default');
+      username = req.user.displayName || req.user.email?.split('@')[0] || `User${uid}`;
+    }
+
+    // Build RTC token
+    const token = RtcTokenBuilder.buildTokenWithUid(
+      AGORA_APP_ID,
+      AGORA_APP_CERTIFICATE,
+      channelName,
+      uid,
+      RtcRole.PUBLISHER,
+      privilegeExpiredTs
+    );
+
+    console.log(`✅ RTC Token generated for ${username} (UID: ${uid}) in channel ${channelName}`);
+
+    res.json({
+      appId: AGORA_APP_ID,
+      channelName: channelName,
+      token: token,
+      uid: uid,
+      username: username,
+      expiresAt: privilegeExpiredTs
     });
+
+  } catch (error) {
+    console.error('❌ RTC Token error:', error);
+    res.status(500).json({ error: 'Failed to generate RTC token' });
   }
 });
 
-// Initialize default channels
+// ========================================
+// INITIALIZE DEFAULT DATA
+// ========================================
+
 async function initializeDefaultChannels() {
   const channelCount = await Channel.countDocuments();
   
@@ -756,13 +859,18 @@ async function initializeDefaultChannels() {
     ];
     
     await Channel.insertMany(defaultChannels);
-    console.log('Default channels created');
+    console.log('✅ Default channels created');
   }
 }
 
-// Start server
+// ========================================
+// START SERVER
+// ========================================
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, async () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`✅ Server running on port ${PORT}`);
+  console.log(`📡 API: http://localhost:${PORT}/api`);
+  console.log(`🔐 Agora RTM: ${process.env.AGORA_APP_ID ? 'Configured' : 'Missing'}`);
   await initializeDefaultChannels();
 });
