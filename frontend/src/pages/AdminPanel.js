@@ -89,220 +89,315 @@ export default function UnifiedAdminPanel() {
     }
   };
 
-  const loadChannels = async (authToken) => {
-    try {
-      const response = await fetch(`${API_URL}/api/channels/all`, {
-        headers: { 'Authorization': `Bearer ${authToken || token}` }
-      });
-      
-      if (!response.ok) {
-        // Channels might not be accessible with admin token, that's okay
-        console.log(`Channels endpoint returned ${response.status}, skipping channels`);
-        setChannels([]);
-        return; // Don't throw, just return empty
+ // 1. loadChannels
+const loadChannels = async (authToken = null) => {
+  try {
+    const tokenToUse = authToken || token;
+    console.log('Loading channels with token:', tokenToUse ? 'Present' : 'Missing');
+    
+    const response = await fetch(`${API_URL}/api/channels/all`, {
+      headers: { 
+        'Authorization': `Bearer ${tokenToUse}`,
+        'Content-Type': 'application/json'
       }
-      
-      const data = await response.json();
-      setChannels(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error('Kanallar yüklenemedi:', error.message);
+    });
+    
+    console.log('Channels response status:', response.status);
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Channels error:', errorData);
       setChannels([]);
-      // Don't throw, channels are optional
+      return;
     }
-  };
+    
+    const data = await response.json();
+    console.log('Channels loaded:', data.length);
+    setChannels(Array.isArray(data) ? data : []);
+  } catch (error) {
+    console.error('Kanallar yüklenemedi:', error.message);
+    setChannels([]);
+  }
+};
 
-  const handleAddChannel = async () => {
-    try {
-      const response = await fetch(`${API_URL}/api/channels`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(newChannel)
-      });
-      
-      if (response.ok) {
-        setShowAddChannel(false);
-        setNewChannel({ name: '', category: 'Support', description: '', isPublic: true });
-        loadChannels();
-        alert('Kanal başarıyla eklendi');
-      }
-    } catch (error) {
-      alert('Kanal eklenemedi');
-    }
-  };
-
-  const handleDeleteChannel = async (channelId) => {
-    setConfirmDialog({
-      show: true,
-      title: 'Kanalı Sil',
-      message: 'Bu kanalı silmek istediğinize emin misiniz?',
-      onConfirm: async () => {
-        try {
-          const response = await fetch(`${API_URL}/api/channels/${channelId}`, {
-            method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
-          
-          if (response.ok) {
-            loadChannels();
-            alert('Kanal silindi');
-          }
-        } catch (error) {
-          alert('Kanal silinemedi');
-        }
-        setConfirmDialog({ show: false, title: '', message: '', onConfirm: null });
-      }
+// 2. handleAddChannel
+const handleAddChannel = async () => {
+  try {
+    console.log('Adding channel with token:', token ? 'Present' : 'Missing');
+    
+    const response = await fetch(`${API_URL}/api/channels`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(newChannel)
     });
-  };
-
-  const loadMessages = async (channelId) => {
-    try {
-      const response = await fetch(`${API_URL}/api/channels/${channelId}/messages`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      
-      const data = await response.json();
-      setMessages(Array.isArray(data) ? data : []);
-      setSelectedChannel(channels.find(c => c._id === channelId));
-    } catch (error) {
-      console.error('Mesajlar yüklenemedi:', error);
-      setMessages([]);
-      setError('Mesajlar yüklenirken bir hata oluştu.');
-    }
-  };
-
-  const handleDeleteMessage = async (channelId, messageId) => {
-    try {
-      const response = await fetch(`${API_URL}/api/channels/${channelId}/messages/${messageId}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      if (response.ok) {
-        loadMessages(channelId);
-      }
-    } catch (error) {
-      alert('Mesaj silinemedi');
-    }
-  };
-
-  const handleClearChannel = async (channelId) => {
-    setConfirmDialog({
-      show: true,
-      title: 'Tüm Mesajları Sil',
-      message: 'Bu kanaldaki TÜM mesajları silmek istediğinize emin misiniz? Bu işlem geri alınamaz.',
-      onConfirm: async () => {
-        try {
-          const response = await fetch(`${API_URL}/api/channels/${channelId}/messages`, {
-            method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
-          
-          if (response.ok) {
-            loadMessages(channelId);
-            alert('Tüm mesajlar silindi');
-          }
-        } catch (error) {
-          alert('Mesajlar silinemedi');
-        }
-        setConfirmDialog({ show: false, title: '', message: '', onConfirm: null });
-      }
-    });
-  };
-
-  const loadStats = async (authToken) => {
-    try {
-      const response = await fetch(`${API_URL}/api/assessment/results/stats`, {
-        headers: { 'Authorization': `Bearer ${authToken || token}` }
-      });
-      
-      if (response.status === 401) {
-        // Token is invalid
-        throw new Error('Authentication expired');
-      }
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      
-      const data = await response.json();
-      setStats(data);
-    } catch (error) {
-      console.error('İstatistikler yüklenemedi:', error.message);
-      setStats(null);
-    }
-  };
-
-  const loadAssessmentResults = async () => {
-    try {
-      setLoading(true);
-      const response = await fetch(`${API_URL}/api/assessment/results`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await response.json();
-      
-      const anonymized = data.map((result, index) => ({
-        ...result,
-        anonId: `K${index + 1}`
-      }));
-      
-      setAssessmentResults(anonymized);
-      setError('');
-    } catch (error) {
-      console.error('Sonuçlar yüklenemedi:', error);
-      setError('Sonuçlar yüklenirken bir hata oluştu.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    const savedToken = localStorage.getItem('adminToken');
-    if (savedToken) {
-      // Validate token by trying to load assessment results (main feature)
-      const validateAndLoad = async () => {
-        try {
-          setToken(savedToken);
-          setIsAuthenticated(true);
-          
-          // Try to load channels and stats, but don't fail if they don't work
-          await loadChannels(savedToken);
-          await loadStats(savedToken);
-          
-        } catch (error) {
-          // Token is invalid, clear everything
-          console.log('Saved token is invalid, clearing session');
-          localStorage.removeItem('adminToken');
-          setIsAuthenticated(false);
-          setToken('');
-        } finally {
-          setInitializing(false);
-        }
-      };
-      
-      validateAndLoad();
+    
+    console.log('Add channel response:', response.status);
+    
+    if (response.ok) {
+      setShowAddChannel(false);
+      setNewChannel({ name: '', category: 'Support', description: '', isPublic: true });
+      await loadChannels();
+      alert('Kanal başarıyla eklendi');
     } else {
-      setInitializing(false);
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Add channel error:', errorData);
+      alert('Kanal eklenemedi: ' + (errorData.error || 'Bilinmeyen hata'));
     }
-  }, []);
+  } catch (error) {
+    console.error('Add channel error:', error);
+    alert('Kanal eklenemedi: ' + error.message);
+  }
+};
 
-  useEffect(() => {
-    if (activeTab === 'results' && isAuthenticated) {
-      loadAssessmentResults();
+// 3. handleDeleteChannel
+const handleDeleteChannel = async (channelId) => {
+  setConfirmDialog({
+    show: true,
+    title: 'Kanalı Sil',
+    message: 'Bu kanalı silmek istediğinize emin misiniz?',
+    onConfirm: async () => {
+      try {
+        console.log('Deleting channel with token:', token ? 'Present' : 'Missing');
+        
+        const response = await fetch(`${API_URL}/api/channels/${channelId}`, {
+          method: 'DELETE',
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        console.log('Delete channel response:', response.status);
+        
+        if (response.ok) {
+          await loadChannels();
+          alert('Kanal silindi');
+        } else {
+          const errorData = await response.json().catch(() => ({}));
+          console.error('Delete channel error:', errorData);
+          alert('Kanal silinemedi: ' + (errorData.error || 'Bilinmeyen hata'));
+        }
+      } catch (error) {
+        console.error('Delete channel error:', error);
+        alert('Kanal silinemedi: ' + error.message);
+      }
+      setConfirmDialog({ show: false, title: '', message: '', onConfirm: null });
     }
-    if (activeTab === 'channels' && isAuthenticated && channels.length === 0) {
-      loadChannels(token).catch(err => console.log('Failed to load channels:', err.message));
+  });
+};
+
+// 4. loadMessages
+const loadMessages = async (channelId) => {
+  try {
+    console.log('Loading messages with token:', token ? 'Present' : 'Missing');
+    
+    const response = await fetch(`${API_URL}/api/channels/${channelId}/messages`, {
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    console.log('Messages response status:', response.status);
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Messages error:', errorData);
+      throw new Error(`HTTP ${response.status}`);
     }
-    if (activeTab === 'stats' && isAuthenticated && !stats) {
-      loadStats(token).catch(err => console.log('Failed to load stats:', err.message));
+    
+    const data = await response.json();
+    console.log('Messages loaded:', data.length);
+    setMessages(Array.isArray(data) ? data : []);
+    setSelectedChannel(channels.find(c => c._id === channelId));
+  } catch (error) {
+    console.error('Mesajlar yüklenemedi:', error);
+    setMessages([]);
+    setError('Mesajlar yüklenirken bir hata oluştu: ' + error.message);
+  }
+};
+
+// 5. handleDeleteMessage
+const handleDeleteMessage = async (channelId, messageId) => {
+  try {
+    console.log('Deleting message with token:', token ? 'Present' : 'Missing');
+    
+    const response = await fetch(`${API_URL}/api/channels/${channelId}/messages/${messageId}`, {
+      method: 'DELETE',
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    console.log('Delete message response:', response.status);
+    
+    if (response.ok) {
+      await loadMessages(channelId);
+    } else {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Delete message error:', errorData);
+      alert('Mesaj silinemedi: ' + (errorData.error || 'Bilinmeyen hata'));
     }
-  }, [activeTab, isAuthenticated]);
+  } catch (error) {
+    console.error('Delete message error:', error);
+    alert('Mesaj silinemedi: ' + error.message);
+  }
+};
+
+// 6. handleClearChannel
+const handleClearChannel = async (channelId) => {
+  setConfirmDialog({
+    show: true,
+    title: 'Tüm Mesajları Sil',
+    message: 'Bu kanaldaki TÜM mesajları silmek istediğinize emin misiniz? Bu işlem geri alınamaz.',
+    onConfirm: async () => {
+      try {
+        console.log('Clearing channel with token:', token ? 'Present' : 'Missing');
+        
+        const response = await fetch(`${API_URL}/api/channels/${channelId}/messages`, {
+          method: 'DELETE',
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        console.log('Clear channel response:', response.status);
+        
+        if (response.ok) {
+          await loadMessages(channelId);
+          alert('Tüm mesajlar silindi');
+        } else {
+          const errorData = await response.json().catch(() => ({}));
+          console.error('Clear channel error:', errorData);
+          alert('Mesajlar silinemedi: ' + (errorData.error || 'Bilinmeyen hata'));
+        }
+      } catch (error) {
+        console.error('Clear channel error:', error);
+        alert('Mesajlar silinemedi: ' + error.message);
+      }
+      setConfirmDialog({ show: false, title: '', message: '', onConfirm: null });
+    }
+  });
+};
+
+// 7. loadStats
+const loadStats = async (authToken = null) => {
+  try {
+    const tokenToUse = authToken || token;
+    console.log('Loading stats with token:', tokenToUse ? 'Present' : 'Missing');
+    
+    const response = await fetch(`${API_URL}/api/assessment/results/stats`, {
+      headers: { 
+        'Authorization': `Bearer ${tokenToUse}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    console.log('Stats response status:', response.status);
+    
+    if (response.status === 401) {
+      throw new Error('Authentication expired');
+    }
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    
+    const data = await response.json();
+    console.log('Stats loaded successfully');
+    setStats(data);
+  } catch (error) {
+    console.error('İstatistikler yüklenemedi:', error.message);
+    setStats(null);
+  }
+};
+
+// 8. loadAssessmentResults
+const loadAssessmentResults = async () => {
+  try {
+    setLoading(true);
+    console.log('Loading assessment results with token:', token ? 'Present' : 'Missing');
+    
+    const response = await fetch(`${API_URL}/api/assessment/results`, {
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    console.log('Assessment results response status:', response.status);
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `HTTP ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    const anonymized = data.map((result, index) => ({
+      ...result,
+      anonId: `K${index + 1}`
+    }));
+    
+    console.log('Assessment results loaded:', anonymized.length);
+    setAssessmentResults(anonymized);
+    setError('');
+  } catch (error) {
+    console.error('Sonuçlar yüklenemedi:', error);
+    setError('Sonuçlar yüklenirken bir hata oluştu: ' + error.message);
+  } finally {
+    setLoading(false);
+  }
+};
+
+// 9. İlk useEffect (token validation)
+useEffect(() => {
+  const savedToken = localStorage.getItem('adminToken');
+  if (savedToken) {
+    const validateAndLoad = async () => {
+      try {
+        console.log('Validating saved token...');
+        setToken(savedToken);
+        setIsAuthenticated(true);
+        
+        // Try to load channels and stats
+        await loadChannels(savedToken);
+        await loadStats(savedToken);
+        
+      } catch (error) {
+        console.log('Saved token is invalid, clearing session');
+        localStorage.removeItem('adminToken');
+        setIsAuthenticated(false);
+        setToken('');
+      } finally {
+        setInitializing(false);
+      }
+    };
+    
+    validateAndLoad();
+  } else {
+    setInitializing(false);
+  }
+}, []);
+
+// 10. İkinci useEffect (tab changes)
+useEffect(() => {
+  if (activeTab === 'results' && isAuthenticated) {
+    loadAssessmentResults();
+  }
+  if (activeTab === 'channels' && isAuthenticated) {
+    console.log('Channels tab activated, loading channels...');
+    loadChannels().catch(err => console.log('Failed to load channels:', err.message));
+  }
+  if (activeTab === 'stats' && isAuthenticated && !stats) {
+    loadStats().catch(err => console.log('Failed to load stats:', err.message));
+  }
+}, [activeTab, isAuthenticated]);
 
   useEffect(() => {
     applyFilters();
