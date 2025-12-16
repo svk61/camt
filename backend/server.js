@@ -505,6 +505,7 @@ app.post('/assessment/submit', authMiddleware, async (req, res) => {
 });
 
 // Channel Routes
+// Channel Routes
 app.get('/api/channels', authMiddleware, async (req, res) => {
   try {
     const query = req.user.isAdmin 
@@ -518,29 +519,47 @@ app.get('/api/channels', authMiddleware, async (req, res) => {
   }
 });
 
+// Admin can fetch all channels without user context
 app.get('/api/channels/all', async (req, res) => {
   try {
     const token = req.header('Authorization')?.replace('Bearer ', '');
     
+    console.log('📋 GET /api/channels/all');
+    console.log('Token present:', !!token);
+    
     // Check if it's an admin token
     if (token) {
+      let decoded;
       try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+        decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+        console.log('✅ Token verified:', decoded.adminAccess || decoded.isAdmin ? 'Admin' : 'User');
+        
         if (decoded.adminAccess || decoded.isAdmin) {
           // Admin can see all channels
           const channels = await Channel.find({});
+          console.log('✅ Admin: Returning all channels:', channels.length);
           return res.json(channels);
         }
+        // User token - show only public channels
+        const channels = await Channel.find({ isPublic: true });
+        console.log('✅ User: Returning public channels:', channels.length);
+        return res.json(channels);
       } catch (err) {
-        // Token invalid, continue to public channels
+        console.log('❌ Token verification failed:', err.message);
+        // Token invalid, show only public channels
+        const channels = await Channel.find({ isPublic: true });
+        console.log('✅ Invalid token: Returning public channels:', channels.length);
+        return res.json(channels);
       }
     }
     
-    // Non-admin or no token: show only public channels
+    // No token: show only public channels
     const channels = await Channel.find({ isPublic: true });
+    console.log('✅ No token: Returning public channels:', channels.length);
     res.json(channels);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch chhgannels' });
+    console.error('❌ Channels fetch error:', error);
+    res.status(500).json({ error: 'Failed to fetch channels' });
   }
 });
 
