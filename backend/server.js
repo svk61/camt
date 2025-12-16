@@ -518,8 +518,25 @@ app.get('/api/channels', authMiddleware, async (req, res) => {
   }
 });
 
-app.get('/api/channels/all', authMiddleware, async (req, res) => {
+app.get('/api/channels/all', async (req, res) => {
   try {
+    const token = req.header('Authorization')?.replace('Bearer ', '');
+    
+    // Check if it's an admin token
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+        if (decoded.adminAccess || decoded.isAdmin) {
+          // Admin can see all channels
+          const channels = await Channel.find({});
+          return res.json(channels);
+        }
+      } catch (err) {
+        // Token invalid, continue to public channels
+      }
+    }
+    
+    // Non-admin or no token: show only public channels
     const channels = await Channel.find({ isPublic: true });
     res.json(channels);
   } catch (error) {
