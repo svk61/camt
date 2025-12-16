@@ -540,7 +540,7 @@ app.get('/api/channels/all', async (req, res) => {
     const channels = await Channel.find({ isPublic: true });
     res.json(channels);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch channels' });
+    res.status(500).json({ error: 'Failed to fetch chhgannels' });
   }
 });
 
