@@ -306,12 +306,12 @@ app.post('/api/auth/login', async (req, res) => {
     
     const user = await User.findOne({ email });
     if (!user) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+      return res.status(401).json({ error: 'Yanlış Kullanıcı adı veya şifre' });
     }
     
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+      return res.status(401).json({ error: 'Yanlış Kullanıcı adı veya şifre' });
     }
     
     const token = jwt.sign(
@@ -334,7 +334,7 @@ app.post('/api/auth/login', async (req, res) => {
       }
     });
   } catch (error) {
-    res.status(500).json({ error: 'Login failed' });
+    res.status(500).json({ error: 'Giriş başarısız oldu' });
   }
 });
 
