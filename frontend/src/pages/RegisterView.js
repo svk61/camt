@@ -1,94 +1,81 @@
-import React, { useState } from 'react';
-import { Eye, EyeOff, Hash } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Eye, EyeOff, Hash, ArrowRight, ArrowLeft, CheckCircle2, ShieldCheck, Heart, Award, Sparkles } from 'lucide-react';
 import { API } from '../App';
 
 function RegisterView({ onRegister, onBack }) {
   const [step, setStep] = useState(1);
+  const [activeTextIndex, setActiveTextIndex] = useState(0);
   const [formData, setFormData] = useState({
     email: '',
     password: '',
     confirmPassword: '',
-    gender: '', // erkek, kadın, diğer
+    gender: '',
     age: '',
-    education: '', // İlkokul, Ortaokul, Lise, Üniversite, Diğer
+    education: '',
     school: '',
+    kvkkApproved: false,
     showPassword: false
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Sol paneldeki animasyonlu metinler (İkonlar eklendi)
+  const infoTexts = [
+    { 
+        title: "Güvenli Paylaşım", 
+        desc: "Sorunlarını anonim olarak paylaş, topluluktan destek al.",
+        icon: <ShieldCheck className="w-8 h-8 mb-4 opacity-90" />
+    },
+    { 
+        title: "Uzman Görüşleri", 
+        desc: "Eğitim ve gelişim yolculuğunda doğru bilgiye ulaş.",
+        icon: <Award className="w-8 h-8 mb-4 opacity-90" />
+    },
+    { 
+        title: "Birlikte Güçlüyüz", 
+        desc: "Seninle benzer yollardan geçen binlerce kişi burada.",
+        icon: <Heart className="w-8 h-8 mb-4 opacity-90" />
+    }
+  ];
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setActiveTextIndex((prev) => (prev + 1) % infoTexts.length);
+    }, 4500);
+    return () => clearInterval(interval);
+  }, [infoTexts.length]);
+
   const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
+    const { name, value, type, checked } = e.target;
+    setFormData(prev => ({ 
+      ...prev, 
+      [name]: type === 'checkbox' ? checked : value 
     }));
-  };
-
-  const handleGenderChange = (gender) => {
-    setFormData(prev => ({
-      ...prev,
-      gender
-    }));
-  };
-
-  const validateStep1 = () => {
-    if (!formData.gender) {
-      setError('Lütfen cinsiyet seçiniz');
-      return false;
-    }
-    if (!formData.age || formData.age < 13 || formData.age > 100) {
-      setError('Lütfen geçerli bir yaş giriniz');
-      return false;
-    }
-    if (!formData.education) {
-      setError('Lütfen eğitim durumunu seçiniz');
-      return false;
-    }
-    if (formData.education === 'Okuyorum' && !formData.school) {
-      setError('Lütfen okul adını giriniz');
-      return false;
-    }
-    setError('');
-    return true;
   };
 
   const validateStep2 = () => {
-    if (!formData.email) {
-      setError('Lütfen e-mail giriniz');
-      return false;
-    }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      setError('Lütfen geçerli bir e-mail giriniz');
-      return false;
-    }
-    if (!formData.password) {
-      setError('Lütfen şifre giriniz');
+    if (!formData.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      setError('Geçerli bir e-mail adresi giriniz.');
       return false;
     }
     if (formData.password.length < 8) {
-      setError('Şifre en az 8 karakter olmalıdır');
+      setError('Şifre en az 8 karakter olmalıdır.');
       return false;
     }
     if (formData.password !== formData.confirmPassword) {
-      setError('Şifreler eşleşmiyor');
+      setError('Şifreler birbiriyle eşleşmiyor.');
       return false;
     }
-    setError('');
-    return true;
-  };
-
-  const handleNext = () => {
-    if (step === 1 && validateStep1()) {
-      setStep(2);
-    } else if (step === 2 && validateStep2()) {
-      handleRegister();
+    if (!formData.kvkkApproved) {
+      setError('Devam etmek için KVKK metnini onaylamalısınız.');
+      return false;
     }
+    return true;
   };
 
   const handleRegister = async () => {
     setLoading(true);
-
+    setError('');
     try {
       const result = await API.register(formData.email, formData.password, {
         gender: formData.gender,
@@ -96,254 +83,206 @@ function RegisterView({ onRegister, onBack }) {
         education: formData.education,
         school: formData.school || null
       });
-      
       localStorage.setItem('token', result.token);
       localStorage.setItem('user', JSON.stringify(result.user));
       onRegister(result.user);
     } catch (err) {
-      setError(err.message || 'Kayıt başarısız. E-mail zaten kullanımda olabilir.');
+      setError(err.message || 'Kayıt başarısız. Bu e-mail zaten kayıtlı olabilir.');
     } finally {
       setLoading(false);
     }
   };
 
+  const handleNext = () => {
+    if (step === 1) {
+      if (!formData.gender || !formData.age || !formData.education) {
+        setError('Lütfen tüm alanları doldurun.');
+        return;
+      }
+      setError('');
+      setStep(2);
+    } else if (step === 2) {
+      if (validateStep2()) {
+        handleRegister();
+      }
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8">
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-indigo-600 rounded-full mx-auto mb-4 flex items-center justify-center">
-            <Hash className="w-8 h-8 text-white" />
-          </div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Hesap Oluştur</h1>
-          <p className="text-gray-600">Destek topluluğumuza katıl</p>
-        </div>
-
-        <div className="mb-6">
-          <div className="flex items-center justify-between">
-            <span className={`text-sm font-medium ${step === 1 ? 'text-indigo-600' : 'text-gray-400'}`}>
-              Adım 1: Bilgiler
-            </span>
-            <span className={`text-sm font-medium ${step === 2 ? 'text-indigo-600' : 'text-gray-400'}`}>
-              Adım 2: Hesap
-            </span>
-          </div>
-          <div className="w-full bg-gray-200 rounded-full h-2 mt-3">
-            <div 
-              className="bg-indigo-600 h-2 rounded-full transition-all duration-300"
-              style={{ width: `${(step / 2) * 100}%` }}
-            />
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          {step === 1 ? (
-            <>
-              {/* CINSIYET */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-3">Cinsiyet</label>
-                <div className="space-y-2">
-                  {['Erkek', 'Kadın', 'Diğer'].map((option) => (
-                    <button
-                      key={option}
-                      onClick={() => handleGenderChange(option)}
-                      className={`w-full px-4 py-3 rounded-lg border-2 text-left transition ${
-                        formData.gender === option
-                          ? 'border-indigo-600 bg-indigo-50 text-indigo-900'
-                          : 'border-gray-200 hover:border-indigo-300 text-gray-700'
-                      }`}
-                    >
-                      {option}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* YAŞ */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Yaş</label>
-                <input
-                  type="number"
-                  name="age"
-                  value={formData.age}
-                  onChange={handleChange}
-                  min="13"
-                  max="100"
-                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
-                  placeholder="Yaşınız"
-                />
-              </div>
-
-              {/* EĞİTİM */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Okul Seçiniz</label>
-                <select
-                  name="education"
-                  value={formData.education}
-                  onChange={handleChange}
-                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
-                >
-                  <option value="">— Okul seçiniz —</option>
-  <option value="">— Okul seçiniz —</option>
-
-  <option value="Alanya Mesleki ve Teknik Anadolu Lisesi">Alanya Mesleki ve Teknik Anadolu Lisesi —  (Resmi)</option>
-  <option value="Rıfat Azakoğlu Mesleki ve Teknik Anadolu Lisesi">Rıfat Azakoğlu Mesleki ve Teknik Anadolu Lisesi — 346659 (Resmi)</option>
-  <option value="Alanya Nezihe Soydan Mesleki ve Teknik Anadolu Lisesi">Alanya Nezihe Soydan Mesleki ve Teknik Anadolu Lisesi — 124150 (Resmi)</option>
-  <option value="Arıkan Yılmaz Dim Mesleki ve Teknik Anadolu Lisesi">Arıkan Yılmaz Dim Mesleki ve Teknik Anadolu Lisesi — 973062 (Resmi)</option>
-  <option value="Alanya Ümit Altay Mesleki ve Teknik Anadolu Lisesi">Alanya Ümit Altay Mesleki ve Teknik Anadolu Lisesi — 215596 (Resmi)</option>
-  <option value="Okurcalar Çok Programlı Anadolu Lisesi">Okurcalar Çok Programlı Anadolu Lisesi — 962078 (Resmi)</option>
-  <option value="Demirtaş Çok Programlı Anadolu Lisesi">Demirtaş Çok Programlı Anadolu Lisesi — 963823 (Resmi)</option>
-  <option value="Avsallar Recep KARACA Çok Programlı Anadolu Lisesi">Avsallar Recep KARACA Çok Programlı Anadolu Lisesi — 876878 (Resmi)</option>
-  <option value="Cemile Kuyumcu Mesleki ve Teknik Anadolu Lisesi">Cemile Kuyumcu Mesleki ve Teknik Anadolu Lisesi — 748757 (Resmi)</option>
-  <option value="Eczacı Güzin-Velittin Bekrioğlu Mesleki ve Teknik Anadolu Lisesi">Eczacı Güzin-Velittin Bekrioğlu Mesleki ve Teknik Anadolu Lisesi — 758327 (Resmi)</option>
-  <option value="Emine Gümrükçüler Turizm Mesleki ve Teknik Anadolu Lisesi">Emine Gümrükçüler Turizm Mesleki ve Teknik Anadolu Lisesi — 776181 (Resmi)</option>
-  <option value="İrfan Bileydi Mesleki ve Teknik Anadolu Lisesi">İrfan Bileydi Mesleki ve Teknik Anadolu Lisesi — 775889 (Resmi)</option>
-  <option value="Payallar Çok Programlı Anadolu Lisesi">Payallar Çok Programlı Anadolu Lisesi — 758312 (Resmi)</option>
-  <option value="Feyzi Alaettinoğlu Anadolu Lisesi">Feyzi Alaettinoğlu Anadolu Lisesi — 972439 (Resmi)</option>
-  <option value="Oba Anadolu Lisesi">Oba Anadolu Lisesi — 750707 (Resmi)</option>
-  <option value="Alanya Lisesi">Alanya Lisesi — 974830 (Resmi)</option>
-  <option value="Alanya Mehmet Arif Türktaş Anadolu Lisesi">Alanya Mehmet Arif Türktaş Anadolu Lisesi — 751179 (Resmi)</option>
-  <option value="Hasan Çolak Anadolu Lisesi">Hasan Çolak Anadolu Lisesi — 223432 (Resmi)</option>
-  <option value="Mahmutlar Anadolu Lisesi">Mahmutlar Anadolu Lisesi — 750708 (Resmi)</option>
-  <option value="Mustafa-Mürüvvet Alaattinoğlu Anadolu Lisesi">Mustafa-Mürüvvet Alaattinoğlu Anadolu Lisesi — 750709 (Resmi)</option>
-  <option value="Nimet Alaettinoğlu Anadolu Lisesi">Nimet Alaettinoğlu Anadolu Lisesi — 974828 (Resmi)</option>
-  <option value="Kestel Sultan Alparslan Anadolu Lisesi">Kestel Sultan Alparslan Anadolu Lisesi — 758395 (Resmi)</option>
-  <option value="Oba Nazmi Yılmaz Anadolu Lisesi">Oba Nazmi Yılmaz Anadolu Lisesi — 974829 (Resmi)</option>
-  <option value="Şehit Abdullah Ümit Sercan Anadolu Lisesi">Şehit Abdullah Ümit Sercan Anadolu Lisesi — 964290 (Resmi)</option>
-  <option value="15 Temmuz Şehitler Anadolu Lisesi">15 Temmuz Şehitler Anadolu Lisesi — 762118 (Resmi)</option>
-  <option value="Hüseyin Girenes Fen Lisesi">Hüseyin Girenes Fen Lisesi — 970851 (Resmi)</option>
-  <option value="Türkler Borsa İstanbul Sosyal Bilimler Lisesi">Türkler Borsa İstanbul Sosyal Bilimler Lisesi — 758087 (Resmi)</option>
-  <option value="Türkler Güzel Sanatlar Lisesi">Türkler Güzel Sanatlar Lisesi — 758377 (Resmi)</option>
-  <option value="Alanya Kız Anadolu İmam Hatip Lisesi">Alanya Kız Anadolu İmam Hatip Lisesi — 124162 (Resmi)</option>
-  <option value="Emine Ahmet Uysal Teknoloji Anadolu Lisesi">Emine Ahmet Uysal Teknoloji Anadolu Lisesi — 764673 (Resmi)</option>
-  <option value="Nebahat Şifa Anadolu İmam Hatip Lisesi">Nebahat Şifa Anadolu İmam Hatip Lisesi — 757703 (Resmi)</option>
-  <option value="Fatma Özmüftüoğlu Anadolu İmam Hatip Lisesi">Fatma Özmüftüoğlu Anadolu İmam Hatip Lisesi — 761369 (Resmi)</option>
-  <option value="Alanya Mevlüt Çavuşoğlu Spor Lisesi">Alanya Mevlüt Çavuşoğlu Spor Lisesi — 763520 (Resmi)</option>
-  <option value="Demirtaş Anadolu İmam Hatip Lisesi">Demirtaş Anadolu İmam Hatip Lisesi — 766152 (Resmi)</option>
-
-  <option value="Özel Doğa Fen Lisesi">Özel Doğa Fen Lisesi — 99971387 (Özel)</option>
-  <option value="Özel Doğa Anadolu Lisesi">Özel Doğa Anadolu Lisesi — 99957288 (Özel)</option>
-  <option value="Özel Alanya Bahçeşehir Koleji Fen ve Teknoloji Lisesi">Özel Alanya Bahçeşehir Koleji Fen ve Teknoloji Lisesi — 99997318 (Özel)</option>
-  <option value="Özel Alanya Final Akademi Anadolu Lisesi">Özel Alanya Final Akademi Anadolu Lisesi — 99985754 (Özel)</option>
-  <option value="Alanya Özel Hamdullah Eminpaşa Anadolu Lisesi">Alanya Özel Hamdullah Eminpaşa Anadolu Lisesi — 99910036 (Özel)</option>
-  <option value="Özel Alanya Oba Bahçeşehir Koleji Anadolu Lisesi">Özel Alanya Oba Bahçeşehir Koleji Anadolu Lisesi — 99991582 (Özel)</option>
-  <option value="Özel Klassika -M Uluslararası Lisesi">Özel Klassika -M Uluslararası Lisesi — 99957856 (Özel Milletlerarası)</option>
-  <option value="TED Alanya Koleji Özel Lisesi">TED Alanya Koleji Özel Lisesi — 99947412 (Özel)</option>
-  <option value="Özel Alanya Yedi Bilim Anadolu Lisesi">Özel Alanya Yedi Bilim Anadolu Lisesi — 99977865 (Özel)</option>
-  <option value="Özel Alanya Yedi Bilim Fen Lisesi">Özel Alanya Yedi Bilim Fen Lisesi — 99977863 (Özel)</option>
-  <option value="Özel Yaşam Tasarım Fen Lisesi">Özel Yaşam Tasarım Fen Lisesi — 99982739 (Özel)</option>
-  <option value="Özel Yaşam Tasarım Anadolu Lisesi">Özel Yaşam Tasarım Anadolu Lisesi — 99982734 (Özel)</option>
-  <option value="Özel Yaşam Anadolu Lisesi">Özel Yaşam Anadolu Lisesi — 99994732 (Özel)</option>
-  <option value="Özel Eğitim İncisi Milletlerarası Lisesi">Özel Eğitim İncisi Milletlerarası Lisesi — 99917181 (Özel Milletlerarası)</option>
-
-                </select>
-              </div>
-
-              {/* OKUL BİLGİSİ */}
-              {formData.education === 'Okuyorum' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Okul Adı</label>
-                  <input
-                    type="text"
-                    name="school"
-                    value={formData.school}
-                    onChange={handleChange}
-                    className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
-                    placeholder="Okul adınız"
-                  />
-                </div>
-              )}
-            </>
-          ) : (
-            <>
-              {/* E-MAİL */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">E-mail</label>
-                <input
-                  type="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
-                  placeholder="ornek@email.com"
-                />
-              </div>
-
-              {/* ŞİFRE */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Şifre</label>
-                <div className="relative">
-                  <input
-                    type={formData.showPassword ? 'text' : 'password'}
-                    name="password"
-                    value={formData.password}
-                    onChange={handleChange}
-                    className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
-                    placeholder="••••••••"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setFormData(prev => ({
-                      ...prev,
-                      showPassword: !prev.showPassword
-                    }))}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  >
-                    {formData.showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                  </button>
-                </div>
-              </div>
-
-              {/* ŞİFRE ONAYI */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Şifre Onayla</label>
-                <input
-                  type={formData.showPassword ? 'text' : 'password'}
-                  name="confirmPassword"
-                  value={formData.confirmPassword}
-                  onChange={handleChange}
-                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
-                  placeholder="••••••••"
-                />
-              </div>
-            </>
-          )}
-
-          {error && (
-            <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg text-sm">
-              {error}
+    <div className="min-h-screen bg-white dark:bg-gray-900 flex flex-col md:flex-row font-sans transition-colors duration-500">
+      
+      {/* SOL PANEL: Animasyonlu Bölüm */}
+      <div className="hidden md:flex md:w-2/5 bg-indigo-600 dark:bg-indigo-900 p-16 flex-col justify-between text-white relative overflow-hidden transition-colors duration-500">
+        <div className="relative z-10">
+          <div className="flex items-center gap-2 mb-16 cursor-pointer group" onClick={onBack}>
+            <div className="bg-white/10 p-2 rounded-xl backdrop-blur-sm group-hover:bg-white/20 transition-all">
+               <Hash className="w-8 h-8" />
             </div>
-          )}
+            <span className="text-2xl font-bold tracking-tight">CamTavanApp</span>
+          </div>
 
-          <div className="flex gap-3 mt-6">
-            {step === 2 && (
-              <button
-                onClick={() => setStep(1)}
-                className="flex-1 px-4 py-3 rounded-lg font-semibold text-gray-700 hover:bg-gray-100 transition"
+          <div className="h-72 flex flex-col justify-center relative">
+            {infoTexts.map((text, index) => (
+              <div
+                key={index}
+                className={`transition-all duration-700 absolute inset-0 transform ${
+                  index === activeTextIndex 
+                    ? 'opacity-100 translate-y-0 blur-0' 
+                    : 'opacity-0 -translate-y-8 blur-sm pointer-events-none'
+                }`}
               >
-                Geri
-              </button>
-            )}
-            <button
-              onClick={handleNext}
-              disabled={loading}
-              className={`flex-1 px-4 py-3 rounded-lg font-semibold text-white transition ${
-                loading ? 'opacity-50 cursor-not-allowed' : ''
-              } ${step === 1 ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}
-            >
-              {loading ? 'İşleniyor...' : step === 1 ? 'İleri' : 'Hesap Oluştur'}
-            </button>
+                <div className="animate-bounce-slow">{text.icon}</div>
+                <h2 className="text-5xl font-black leading-tight mb-6">{text.title}</h2>
+                <p className="text-indigo-100 dark:text-indigo-200 text-xl max-w-sm leading-relaxed font-medium">{text.desc}</p>
+              </div>
+            ))}
           </div>
         </div>
+        
+        <div className="relative z-10 flex items-center gap-2">
+          {infoTexts.map((_, i) => (
+            <div key={i} className={`h-1.5 rounded-full transition-all duration-500 ${i === activeTextIndex ? 'w-10 bg-white' : 'w-2 bg-indigo-400 dark:bg-indigo-700'}`} />
+          ))}
+        </div>
 
-        <div className="mt-6 text-center">
-          <p className="text-gray-600">
-            Zaten hesabın var mı?{' '}
-            <button
-              onClick={onBack}
-              className="text-indigo-600 font-semibold hover:text-indigo-700"
-            >
-              Giriş Yap
-            </button>
+        {/* Dekoratif Blur Efektleri */}
+        <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500 rounded-full mix-blend-multiply filter blur-[100px] opacity-30 -mr-20 -mt-20 animate-pulse"></div>
+        <div className="absolute bottom-0 left-0 w-64 h-64 bg-purple-500 rounded-full mix-blend-multiply filter blur-[80px] opacity-20 -ml-10 -mb-10 animate-pulse delay-700"></div>
+      </div>
+
+      {/* SAĞ PANEL: Form Bölümü */}
+      <div className="flex-1 flex items-center justify-center p-6 lg:p-12 bg-gray-50 dark:bg-gray-900 transition-colors duration-500">
+        <div className="w-full max-w-md space-y-8">
+          
+          <div className="text-center md:text-left">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 text-xs font-bold mb-4 tracking-wider border border-indigo-200 dark:border-indigo-800">
+              <Sparkles size={14} /> ADIM {step} / 2
+            </div>
+            <h1 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">Hesap Oluştur</h1>
+            <p className="mt-2 text-gray-500 dark:text-gray-400 font-medium">Bize katılmak için sadece birkaç saniye yeterli.</p>
+          </div>
+
+          <div className="bg-white dark:bg-gray-800 p-8 rounded-[2rem] shadow-xl shadow-gray-200/50 dark:shadow-none border border-gray-100 dark:border-gray-700 transition-all duration-300">
+            {step === 1 ? (
+              <div className="space-y-6 animate-in fade-in slide-in-from-right-8 duration-500">
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-3 ml-1">Cinsiyet</label>
+                  <div className="grid grid-cols-3 gap-3">
+                    {['Erkek', 'Kadın', 'Diğer'].map((opt) => (
+                      <button 
+                        key={opt} 
+                        type="button"
+                        onClick={() => setFormData({...formData, gender: opt})} 
+                        className={`py-3.5 rounded-2xl border-2 text-sm font-bold transition-all ${
+                            formData.gender === opt 
+                            ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 shadow-sm' 
+                            : 'border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
+                        }`}
+                      >
+                        {opt}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2 ml-1">Yaşınız</label>
+                  <input type="number" name="age" value={formData.age} onChange={handleChange} 
+                    className="w-full px-5 py-4 rounded-2xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 text-gray-900 dark:text-white focus:bg-white dark:focus:bg-gray-800 focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all" 
+                    placeholder="Örn: 17" 
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2 ml-1">Okulunuz</label>
+                  <div className="relative">
+                    <select name="education" value={formData.education} onChange={handleChange} 
+                        className="w-full px-5 py-4 rounded-2xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 text-gray-900 dark:text-white focus:bg-white dark:focus:bg-gray-800 focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all appearance-none cursor-pointer"
+                    >
+                        <option value="">Seçiniz...</option>
+                        <option value="Alanya Lisesi">Alanya Lisesi</option>
+                        <option value="Hüseyin Girenes Fen Lisesi">Hüseyin Girenes Fen Lisesi</option>
+                        <option value="Diğer">Diğer</option>
+                    </select>
+                    <div className="absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-5 animate-in fade-in slide-in-from-right-8 duration-500">
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2 ml-1">E-mail</label>
+                  <input type="email" name="email" value={formData.email} onChange={handleChange} 
+                    className="w-full px-5 py-4 rounded-2xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 text-gray-900 dark:text-white focus:bg-white dark:focus:bg-gray-800 focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all" 
+                    placeholder="eposta@adresiniz.com" 
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2 ml-1">Şifre</label>
+                  <div className="relative">
+                    <input type={formData.showPassword ? 'text' : 'password'} name="password" value={formData.password} onChange={handleChange} 
+                        className="w-full px-5 py-4 rounded-2xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 text-gray-900 dark:text-white focus:bg-white dark:focus:bg-gray-800 focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all" 
+                        placeholder="••••••••" 
+                    />
+                    <button type="button" onClick={() => setFormData(p => ({ ...p, showPassword: !p.showPassword }))} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400">
+                      {formData.showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2 ml-1">Şifre Tekrar</label>
+                  <input type={formData.showPassword ? 'text' : 'password'} name="confirmPassword" value={formData.confirmPassword} onChange={handleChange} 
+                    className="w-full px-5 py-4 rounded-2xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 text-gray-900 dark:text-white focus:bg-white dark:focus:bg-gray-800 focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all" 
+                    placeholder="••••••••" 
+                  />
+                </div>
+
+                <div className="pt-2">
+                  <label className="flex items-start gap-3 cursor-pointer group">
+                    <div className="relative flex items-center pt-0.5">
+                      <input
+                        type="checkbox"
+                        name="kvkkApproved"
+                        checked={formData.kvkkApproved}
+                        onChange={handleChange}
+                        className="peer h-5 w-5 cursor-pointer appearance-none rounded-lg border-2 border-gray-300 dark:border-gray-600 checked:bg-indigo-600 checked:border-indigo-600 transition-all bg-white dark:bg-gray-800"
+                      />
+                      <CheckCircle2 className="absolute h-5 w-5 text-white opacity-0 peer-checked:opacity-100 transition-opacity pointer-events-none p-0.5" />
+                    </div>
+                    <span className="text-xs text-gray-500 dark:text-gray-400 leading-tight group-hover:text-gray-700 dark:group-hover:text-gray-300 transition-colors">
+                      <button type="button" className="text-indigo-600 dark:text-indigo-400 font-bold hover:underline">KVKK Aydınlatma Metni</button>'ni okudum, anladım ve kabul ediyorum.
+                    </span>
+                  </label>
+                </div>
+              </div>
+            )}
+
+            {error && (
+              <div className="mt-6 p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-2xl text-xs font-bold border border-red-100 dark:border-red-800/50 animate-shake flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div>
+                {error}
+              </div>
+            )}
+
+            <div className="flex gap-3 mt-8">
+              {step === 2 && (
+                <button onClick={() => setStep(1)} className="px-5 py-4 rounded-2xl font-bold text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all border border-transparent hover:border-gray-200 dark:hover:border-gray-600">
+                  <ArrowLeft size={22} />
+                </button>
+              )}
+              <button
+                onClick={handleNext}
+                disabled={loading}
+                className="flex-1 bg-indigo-600 dark:bg-indigo-500 text-white py-4 rounded-2xl font-bold hover:bg-indigo-700 dark:hover:bg-indigo-600 transform transition-all active:scale-95 shadow-xl shadow-indigo-200 dark:shadow-none flex items-center justify-center gap-2 disabled:opacity-50 group"
+              >
+                {loading ? "İşleniyor..." : step === 1 ? "Sonraki Adım" : "Hesabımı Oluştur"}
+                {!loading && <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />}
+              </button>
+            </div>
+          </div>
+
+          <p className="text-center text-gray-500 dark:text-gray-400 text-sm font-medium">
+            Zaten bir hesabın var mı? <button onClick={onBack} className="text-indigo-600 dark:text-indigo-400 font-bold hover:text-indigo-800 dark:hover:text-indigo-300 transition underline decoration-transparent hover:decoration-indigo-600 dark:hover:decoration-indigo-400 underline-offset-2">Giriş Yap</button>
           </p>
         </div>
       </div>
