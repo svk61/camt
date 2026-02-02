@@ -146,9 +146,7 @@ function LoginView({ onLogin }) {
             <div className="space-y-1">
               <div className="flex justify-between items-center ml-1">
                 <label className="text-sm font-bold text-gray-700 dark:text-gray-300">Şifre</label>
-                <button type="button" className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors">
-                  Şifremi Unuttum?
-                </button>
+               
               </div>
               <div className="relative group">
                 <input
