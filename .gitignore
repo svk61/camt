@@ -1,0 +1,45 @@
+# =========================
+# Node / npm / yarn / pnpm
+# =========================
+node_modules/
+**/node_modules/
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# =========================
+# Build outputs
+# =========================
+build/
+dist/
+out/
+.next/
+.vercel/
+
+# CRA cache
+.cache/
+
+# =========================
+# Env files (secret)
+# =========================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# =========================
+# OS / Editor junk
+# =========================
+.DS_Store
+Thumbs.db
+
+.vscode/
+.idea/
+
+# =========================
+# Optional: coverage
+# =========================
+coverage/
