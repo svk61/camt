@@ -1,6 +1,6 @@
 module.exports = {
   plugins: {
-    '@tailwindcss/postcss': {}, // v4 eklentisi
+    '@tailwindcss/postcss': {}, // Sadece bu eklenti olmalı
     'autoprefixer': {},
   },
 }
