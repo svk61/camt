@@ -4,7 +4,7 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   define: {
-    'process.env': {} // Bu satır "process is not defined" hatasını kökten çözer
+    'process.env': {}
   },
   build: {
     outDir: 'build'
