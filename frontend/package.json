@@ -2,7 +2,6 @@
   "name": "support-platform-frontend",
   "version": "1.0.0",
   "private": true,
-  "proxy": "http://localhost:5000",
   "dependencies": {
     "agora-chat": "^1.3.1",
     "agora-rtc-sdk-ng": "^4.24.1",
@@ -10,7 +9,10 @@
     "lucide-react": "^0.263.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-scripts": "5.0.1"
+    "react-scripts": "5.0.1",
+    "tailwindcss": "^4.1.18",
+    "postcss": "^8.5.6",
+    "autoprefixer": "^10.4.24"
   },
   "scripts": {
     "start": "react-scripts start",
@@ -36,11 +38,6 @@
     ]
   },
   "engines": {
-  "node": "24.x"
-},
-  "devDependencies": {
-    "autoprefixer": "^10.4.24",
-    "postcss": "^8.5.6",
-    "tailwindcss": "^4.1.18"
+    "node": "24.x"
   }
 }
