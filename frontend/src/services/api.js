@@ -5,7 +5,9 @@ import AssessmentView from './pages/AssessmentView';
 import ChatView from './pages/ChatView';
 import AdminPanel from './pages/AdminPanel';
 
-// Real API service
+// ========================================
+// 🔥 CRITICAL FIX: Real API service (no mock Agora)
+// ========================================
 const API = {
   baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5000/api',
   
@@ -114,181 +116,20 @@ const API = {
 
   async getAssessmentResults() {
     return this.request('/assessment/results');
+  },
+
+  // 🔥 NEW: Get username by UID
+  async getUsernameByUid(uid) {
+    return this.request(`/agora/user/${uid}`);
   }
 };
 
-// Agora RTC - Real Implementation
-const AgoraRTC = window.AgoraRTC || {
-  createClient: (config) => {
-    console.log('Creating Agora RTC client with config:', config);
-    
-    return {
-      remoteUsers: [],
-      _eventHandlers: {},
-      _joined: false,
-      
-      async join(appId, channel, token, uid) {
-        console.log(`Joining RTC channel: ${channel} with uid: ${uid}`);
-        this._joined = true;
-        return uid;
-      },
-      
-      async leave() {
-        console.log('Leaving RTC channel');
-        this._joined = false;
-        this.remoteUsers = [];
-        return true;
-      },
-      
-      async publish(tracks) {
-        console.log('Publishing tracks:', tracks);
-        return true;
-      },
-      
-      async unpublish(tracks) {
-        console.log('Unpublishing tracks:', tracks);
-        return true;
-      },
-      
-      async subscribe(user, mediaType) {
-        console.log(`Subscribing to user ${user.uid} for ${mediaType}`);
-        
-        if (!this.remoteUsers.find(u => u.uid === user.uid)) {
-          this.remoteUsers.push(user);
-        }
-        
-        return true;
-      },
-      
-      async unsubscribe(user, mediaType) {
-        console.log(`Unsubscribing from user ${user.uid}`);
-        return true;
-      },
-      
-      on(event, callback) {
-        if (!this._eventHandlers[event]) {
-          this._eventHandlers[event] = [];
-        }
-        this._eventHandlers[event].push(callback);
-      },
-      
-      off(event, callback) {
-        if (this._eventHandlers[event]) {
-          this._eventHandlers[event] = this._eventHandlers[event].filter(
-            cb => cb !== callback
-          );
-        }
-      },
-      
-      enableAudioVolumeIndicator() {
-        console.log('Audio volume indicator enabled');
-        // Simulate volume updates
-        setInterval(() => {
-          if (this._eventHandlers['volume-indicator']) {
-            const volumes = [
-              { uid: 'self', level: Math.random() * 100 },
-              ...this.remoteUsers.map(u => ({
-                uid: u.uid,
-                level: Math.random() * 100
-              }))
-            ];
-            this._eventHandlers['volume-indicator'].forEach(cb => cb(volumes));
-          }
-        }, 1000);
-      }
-    };
-  },
-  
-  createMicrophoneAudioTrack: async (config) => {
-    console.log('Creating microphone audio track with config:', config);
-    
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: {
-          echoCancellation: config?.AEC !== false,
-          noiseSuppression: config?.ANS !== false,
-          autoGainControl: config?.AGC !== false,
-          channelCount: 1,
-          sampleRate: 48000
-        } 
-      });
-      
-      const audioTrack = stream.getAudioTracks()[0];
-      
-      return {
-        _mediaStreamTrack: audioTrack,
-        _enabled: true,
-        _volume: 100,
-        
-        getMediaStreamTrack() {
-          return this._mediaStreamTrack;
-        },
-        
-        setEnabled(enabled) {
-          this._enabled = enabled;
-          this._mediaStreamTrack.enabled = enabled;
-          console.log(`Microphone ${enabled ? 'enabled' : 'disabled'}`);
-        },
-        
-        setVolume(volume) {
-          this._volume = volume;
-          console.log(`Volume set to ${volume}`);
-        },
-        
-        getVolumeLevel() {
-          return Math.random() * 100; // Simulated volume level
-        },
-        
-        close() {
-          if (this._mediaStreamTrack) {
-            this._mediaStreamTrack.stop();
-          }
-          console.log('Audio track closed');
-        },
-        
-        play() {
-          console.log('Playing audio track');
-        }
-      };
-    } catch (error) {
-      console.error('Failed to create microphone track:', error);
-      throw error;
-    }
-  }
-};
+// ========================================
+// 🔥 REMOVED: All mock Agora code
+// Real Agora SDK is imported directly in components
+// ========================================
 
-// Agora RTM
-const AgoraRTM = {
-  client: null,
-  channel: null,
-  messageCallback: null,
-  
-  async initialize(appId, userId) {
-    console.log('Agora RTM initialized');
-    return true;
-  },
-  
-  async joinChannel(channelName) {
-    console.log(`Joined RTM channel: ${channelName}`);
-    return true;
-  },
-  
-  async sendMessage(text) {
-    console.log(`Sent RTM message: ${text}`);
-    return true;
-  },
-  
-  onMessage(callback) {
-    this.messageCallback = callback;
-  },
-  
-  async leaveChannel() {
-    console.log('Left RTM channel');
-    return true;
-  }
-};
-
-export { API, AgoraRTC, AgoraRTM };
+export { API };
 
 function App() {
   const [currentView, setCurrentView] = useState('login');

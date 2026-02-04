@@ -1,7 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import AgoraRTC from 'agora-rtc-sdk-ng';
+import { API } from '../App';
 
-const VoiceChat = ({ channelName, userId, onClose }) => {
+// ========================================
+// 🔥 IMPROVED VoiceChat with username display
+// ========================================
+
+const VoiceChat = ({ channelName, userId, username, onClose }) => {
   const [isConnected, setIsConnected] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -10,21 +15,40 @@ const VoiceChat = ({ channelName, userId, onClose }) => {
 
   const clientRef = useRef(null);
   const localAudioTrackRef = useRef(null);
+  const uidToUsernameRef = useRef(new Map()); // 🔥 Track UID to username mapping
 
   // Sanitize channel name for Agora (max 64 chars, alphanumeric and some special chars)
   const sanitizeChannelName = (name) => {
     if (!name) return 'general';
-    // Remove or replace invalid characters
     return name
       .replace(/[^a-zA-Z0-9\-_]/g, '-')
       .substring(0, 64);
   };
 
+  // 🔥 Get username by UID (check local cache first, then API)
+  const getUsernameByUid = async (uid) => {
+    // Check cache first
+    if (uidToUsernameRef.current.has(uid)) {
+      return uidToUsernameRef.current.get(uid);
+    }
+
+    // Try to get from API
+    try {
+      const response = await API.getUsernameByUid(uid);
+      const foundUsername = response.username || `User ${uid}`;
+      uidToUsernameRef.current.set(uid, foundUsername);
+      return foundUsername;
+    } catch (error) {
+      console.log('Could not fetch username for UID:', uid);
+      return `User ${uid}`;
+    }
+  };
+
   useEffect(() => {
-    // Initialize Agora client
+    // Initialize Agora client with CORRECT config
     clientRef.current = AgoraRTC.createClient({ 
-      mode: 'rtc', 
-      codec: 'vp8' 
+      mode: 'rtc',  // 🔥 CRITICAL: rtc mode for voice chat
+      codec: 'vp8'  // 🔥 CRITICAL: vp8 codec
     });
 
     // Setup event listeners
@@ -42,42 +66,77 @@ const VoiceChat = ({ channelName, userId, onClose }) => {
   const setupEventListeners = () => {
     const client = clientRef.current;
 
+    // 🔥 CRITICAL: Handle user-published event
     client.on('user-published', async (user, mediaType) => {
-      console.log('User published:', user.uid, mediaType);
+      console.log('👤 User published:', user.uid, mediaType);
       
       if (mediaType === 'audio') {
         try {
+          // Subscribe to the remote user
           await client.subscribe(user, mediaType);
+          
+          // Play the remote audio
           user.audioTrack?.play();
           
+          // Get username and add to participants
+          const remoteUsername = await getUsernameByUid(user.uid);
+          
           setParticipants(prev => {
-            if (!prev.find(p => p.uid === user.uid)) {
-              return [...prev, { uid: user.uid, hasAudio: true }];
+            // Check if user already exists
+            const existing = prev.find(p => p.uid === user.uid);
+            if (existing) {
+              return prev.map(p => 
+                p.uid === user.uid 
+                  ? { ...p, hasAudio: true, username: remoteUsername }
+                  : p
+              );
             }
-            return prev;
+            // Add new user
+            return [...prev, { 
+              uid: user.uid, 
+              hasAudio: true,
+              username: remoteUsername
+            }];
           });
+
+          console.log('✅ Subscribed to user:', user.uid, remoteUsername);
         } catch (err) {
-          console.error('Error subscribing to user:', err);
+          console.error('❌ Error subscribing to user:', err);
         }
       }
     });
 
+    // 🔥 Handle user-unpublished event
     client.on('user-unpublished', (user, mediaType) => {
-      console.log('User unpublished:', user.uid, mediaType);
+      console.log('👤 User unpublished:', user.uid, mediaType);
       
       if (mediaType === 'audio') {
-        setParticipants(prev => prev.filter(p => p.uid !== user.uid));
+        setParticipants(prev => 
+          prev.map(p => 
+            p.uid === user.uid 
+              ? { ...p, hasAudio: false }
+              : p
+          )
+        );
       }
     });
 
+    // 🔥 Handle user-left event
     client.on('user-left', (user) => {
-      console.log('User left:', user.uid);
+      console.log('👋 User left:', user.uid);
       setParticipants(prev => prev.filter(p => p.uid !== user.uid));
+      uidToUsernameRef.current.delete(user.uid);
     });
 
+    // 🔥 Handle connection state changes
     client.on('connection-state-change', (curState, prevState) => {
-      console.log('Connection state changed:', prevState, '->', curState);
+      console.log('🔌 Connection state:', prevState, '->', curState);
       setIsConnected(curState === 'CONNECTED');
+    });
+
+    // 🔥 Handle errors
+    client.on('error', (error) => {
+      console.error('Agora client error:', error);
     });
   };
 
@@ -87,7 +146,7 @@ const VoiceChat = ({ channelName, userId, onClose }) => {
 
     try {
       const sanitizedChannel = sanitizeChannelName(channelName);
-      console.log('Original channel:', channelName, 'Sanitized:', sanitizedChannel);
+      console.log('📞 Joining voice channel:', sanitizedChannel);
 
       // Get token from backend
       const response = await fetch(
@@ -104,35 +163,75 @@ const VoiceChat = ({ channelName, userId, onClose }) => {
         throw new Error(errorData.details || errorData.error || 'Failed to get token');
       }
 
-      const { token, appId, uid } = await response.json();
+      const tokenData = await response.json();
+      const { token, appId, uid, username: serverUsername, channelUsers } = tokenData;
       
-      console.log('Joining channel:', { 
-        channelName: sanitizedChannel, 
+      console.log('🔑 Token received:', { 
         appId: appId?.substring(0, 8) + '...', 
         uid,
-        uidType: typeof uid
+        username: serverUsername,
+        existingUsers: channelUsers?.length || 0
       });
+
+      // 🔥 CRITICAL: Store username mapping for this user
+      uidToUsernameRef.current.set(uid, serverUsername || username);
+
+      // 🔥 CRITICAL: Store existing users from server
+      if (channelUsers && Array.isArray(channelUsers)) {
+        channelUsers.forEach(user => {
+          if (user.uid && user.username) {
+            uidToUsernameRef.current.set(user.uid, user.username);
+          }
+        });
+      }
 
       const client = clientRef.current;
 
-      // Join the channel with numeric UID
+      // 🔥 CRITICAL: Join with numeric UID from server
       await client.join(appId, sanitizedChannel, token, uid);
-      console.log('✓ Joined channel successfully');
+      console.log('✅ Joined channel successfully as', serverUsername || username);
 
       // Create and publish local audio track
       const audioTrack = await AgoraRTC.createMicrophoneAudioTrack({
         encoderConfig: 'music_standard',
+        AEC: true,  // Echo cancellation
+        ANS: true,  // Noise suppression
+        AGC: true   // Auto gain control
       });
+      
       localAudioTrackRef.current = audioTrack;
       
       await client.publish([audioTrack]);
-      console.log('✓ Published local audio track');
+      console.log('✅ Published local audio track');
 
       setIsConnected(true);
-      setParticipants([{ uid: uid, hasAudio: true, isLocal: true }]);
+      
+      // Add self to participants
+      setParticipants([{ 
+        uid: uid, 
+        hasAudio: true, 
+        isLocal: true,
+        username: serverUsername || username
+      }]);
+
+      // 🔥 Add existing remote users to participants
+      if (channelUsers && Array.isArray(channelUsers)) {
+        const remoteUsers = channelUsers.filter(u => u.uid !== uid);
+        if (remoteUsers.length > 0) {
+          setParticipants(prev => [
+            ...prev,
+            ...remoteUsers.map(u => ({
+              uid: u.uid,
+              hasAudio: true,
+              isLocal: false,
+              username: u.username
+            }))
+          ]);
+        }
+      }
 
     } catch (err) {
-      console.error('Failed to join channel:', err);
+      console.error('❌ Failed to join channel:', err);
       setError(err.message || 'Failed to connect to voice chat');
       
       // Try to cleanup on error
@@ -155,11 +254,12 @@ const VoiceChat = ({ channelName, userId, onClose }) => {
 
       if (client && client.connectionState !== 'DISCONNECTED') {
         await client.leave();
-        console.log('Left channel successfully');
+        console.log('👋 Left channel successfully');
       }
 
       setIsConnected(false);
       setParticipants([]);
+      uidToUsernameRef.current.clear();
     } catch (err) {
       console.error('Error leaving channel:', err);
     }
@@ -173,9 +273,11 @@ const VoiceChat = ({ channelName, userId, onClose }) => {
       if (isMuted) {
         await audioTrack.setEnabled(true);
         setIsMuted(false);
+        console.log('🎤 Unmuted');
       } else {
         await audioTrack.setEnabled(false);
         setIsMuted(true);
+        console.log('🔇 Muted');
       }
     } catch (err) {
       console.error('Error toggling mute:', err);
@@ -207,7 +309,7 @@ const VoiceChat = ({ channelName, userId, onClose }) => {
         marginBottom: '16px'
       }}>
         <div>
-          <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '600' }}>Voice Chat</h3>
+          <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '600' }}>🎤 Voice Chat</h3>
           <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>
             {sanitizeChannelName(channelName)}
           </div>
@@ -292,9 +394,11 @@ const VoiceChat = ({ channelName, userId, onClose }) => {
                   }} />
                   <span style={{ 
                     fontSize: '14px',
-                    flex: 1
+                    flex: 1,
+                    fontWeight: participant.isLocal ? '600' : '400'
                   }}>
-                    {participant.isLocal ? 'You' : `User ${participant.uid}`}
+                    {/* 🔥 CRITICAL: Display actual username */}
+                    {participant.username || `User ${participant.uid}`}
                   </span>
                   {participant.isLocal && (
                     <span style={{ 
@@ -304,7 +408,7 @@ const VoiceChat = ({ channelName, userId, onClose }) => {
                       padding: '2px 6px',
                       borderRadius: '4px'
                     }}>
-                      ME
+                      YOU
                     </span>
                   )}
                 </div>

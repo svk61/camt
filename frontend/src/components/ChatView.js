@@ -1,10 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Hash, User, Settings, LogOut, Mic, MicOff, PhoneOff } from 'lucide-react';
-import API from '../services/api';
-import { AgoraRTC, AgoraRTM } from '../services/agoraService';
+import { Send, Hash, User, Settings, LogOut, Mic, PhoneOff } from 'lucide-react';
+import { API } from '../App';
 import ProfilePanel from './ProfilePanel';
 import ChannelBrowser from './ChannelBrowser';
-import VoiceChat from './Voicechat';
+import VoiceChat from './VoiceChat';
+
+// ========================================
+// 🔥 CRITICAL FIX: Removed all inline Agora code
+// Now using VoiceChat component properly
+// ========================================
 
 function ChatView({ user, channels, onLogout, onProfileUpdate }) {
   const [activeChannel, setActiveChannel] = useState(null);
@@ -13,15 +17,12 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
   const [showProfile, setShowProfile] = useState(false);
   const [showChannelBrowser, setShowChannelBrowser] = useState(false);
   const [userChannels, setUserChannels] = useState(channels);
-  const [inVoiceCall, setInVoiceCall] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
-  const [voiceUsers, setVoiceUsers] = useState([]);
+  
+  // 🔥 VOICE CHAT STATE - Using VoiceChat component
   const [showVoiceChat, setShowVoiceChat] = useState(false);
   const [voiceChannel, setVoiceChannel] = useState(null);
   
   const messagesEndRef = useRef(null);
-  const rtcClientRef = useRef(null);
-  const audioTrackRef = useRef(null);
   const messagePollingRef = useRef(null);
 
   useEffect(() => {
@@ -33,74 +34,17 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
   useEffect(() => {
     if (activeChannel) {
       loadMessages(activeChannel.id || activeChannel._id);
-      initializeAgoraRTM();
       startMessagePolling();
     }
     
     return () => {
       stopMessagePolling();
-      // Safely leave Agora channel if connected
-      if (AgoraRTM.channel) {
-        AgoraRTM.leaveChannel().catch(err => 
-          console.log('Error leaving Agora channel:', err.message)
-        );
-      }
     };
   }, [activeChannel]);
-
-  const initializeAgoraRTM = async () => {
-    try {
-      // Get Agora token from backend
-      const tokenData = await API.getAgoraToken();
-      
-      // Check if we have valid token data
-      if (!tokenData || !tokenData.appId || !tokenData.token) {
-        console.log('Agora RTM not configured, using polling for messages');
-        return;
-      }
-      
-      // Initialize if not already initialized
-      if (!AgoraRTM.client) {
-        await AgoraRTM.initialize(tokenData.appId, user.id.toString(), tokenData.token);
-      }
-      
-      // Join the channel
-      await AgoraRTM.joinChannel(activeChannel.name);
-      
-      // Set up message callback
-      AgoraRTM.onMessage((message) => {
-        // Add received message to messages array
-        const newMessage = {
-          _id: `rtm-${Date.now()}`,
-          id: `rtm-${Date.now()}`,
-          channelId: activeChannel.id || activeChannel._id,
-          userId: message.userId,
-          username: message.userId === user.id.toString() ? (user.displayName || user.email.split('@')[0]) : 'User',
-          text: message.text,
-          createdAt: message.timestamp,
-          isAnonymous: false
-        };
-        setMessages(prev => [...prev, newMessage]);
-      });
-      
-      console.log('Agora RTM initialized successfully');
-    } catch (error) {
-      console.log('Agora RTM initialization failed, using polling instead:', error.message);
-      // Don't throw error, just continue with polling
-    }
-  };
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
-
-  useEffect(() => {
-    return () => {
-      if (inVoiceCall) {
-        leaveVoiceCall();
-      }
-    };
-  }, [inVoiceCall]);
 
   const startMessagePolling = () => {
     stopMessagePolling();
@@ -152,18 +96,8 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
     setMessageInput('');
 
     try {
-      // Send to backend API (primary source of truth)
       const savedMessage = await API.sendMessage(activeChannel.id || activeChannel._id, currentInput);
       setMessages(prev => prev.map(m => m._id === tempId ? savedMessage : m));
-      
-      // Try to send via Agora RTM if available (optional)
-      try {
-        if (AgoraRTM.channel) {
-          await AgoraRTM.sendMessage(currentInput);
-        }
-      } catch (agoraError) {
-        console.log('Agora RTM not available, using polling instead');
-      }
     } catch (error) {
       console.error('Failed to send message:', error);
       setMessages(prev => prev.filter(m => m._id !== tempId));
@@ -172,69 +106,16 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
     }
   };
 
-  const joinVoiceCall = async () => {
-    try {
-      const tokenData = await API.getAgoraRtcToken(`voice-${activeChannel.name}`);
-      
-      // Create RTC client using the real Agora SDK
-      rtcClientRef.current = await AgoraRTC.createClient();
-      
-      await rtcClientRef.current.join(tokenData.appId, tokenData.channelName, tokenData.token, user.id);
-      
-      // Create and publish audio track
-      audioTrackRef.current = await AgoraRTC.createMicrophoneAudioTrack();
-      await rtcClientRef.current.publish([audioTrackRef.current]);
-      
-      setInVoiceCall(true);
-      setVoiceUsers([user.id]);
-      
-      rtcClientRef.current.on('user-published', async (remoteUser, mediaType) => {
-        if (mediaType === 'audio') {
-          await rtcClientRef.current.subscribe(remoteUser, mediaType);
-          remoteUser.audioTrack.play();
-          setVoiceUsers(prev => [...prev, remoteUser.uid]);
-        }
-      });
-      
-      rtcClientRef.current.on('user-unpublished', (remoteUser) => {
-        setVoiceUsers(prev => prev.filter(id => id !== remoteUser.uid));
-      });
-      
-      rtcClientRef.current.on('user-left', (remoteUser) => {
-        setVoiceUsers(prev => prev.filter(id => id !== remoteUser.uid));
-      });
-      
-    } catch (error) {
-      console.error('Failed to join voice call:', error);
-      if (error.message?.includes('not configured')) {
-        alert('Voice chat is not configured. Please add your Agora credentials to the backend .env file.');
-      } else {
-        alert('Failed to join voice call. Please check your microphone permissions and try again.');
-      }
-    }
+  // 🔥 SIMPLIFIED: Just open VoiceChat component
+  const joinVoiceCall = () => {
+    setVoiceChannel(`voice-${activeChannel.name}`);
+    setShowVoiceChat(true);
   };
 
-  const leaveVoiceCall = async () => {
-    try {
-      if (audioTrackRef.current) {
-        audioTrackRef.current.close();
-      }
-      if (rtcClientRef.current) {
-        await rtcClientRef.current.leave();
-      }
-      setInVoiceCall(false);
-      setVoiceUsers([]);
-      setIsMuted(false);
-    } catch (error) {
-      console.error('Failed to leave voice call:', error);
-    }
-  };
-
-  const toggleMute = () => {
-    if (audioTrackRef.current) {
-      audioTrackRef.current.setEnabled(isMuted);
-      setIsMuted(!isMuted);
-    }
+  // 🔥 SIMPLIFIED: Just close VoiceChat component
+  const leaveVoiceCall = () => {
+    setShowVoiceChat(false);
+    setVoiceChannel(null);
   };
 
   const handleJoinChannel = async (channel) => {
@@ -336,7 +217,7 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
           </div>
           
           <div className="flex items-center gap-2">
-            {!inVoiceCall ? (
+            {!showVoiceChat ? (
               <button
                 onClick={joinVoiceCall}
                 className="px-4 py-2 rounded bg-green-600 hover:bg-green-700 text-white flex items-center gap-2 transition"
@@ -348,16 +229,8 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
               <div className="flex items-center gap-2">
                 <div className="px-3 py-2 rounded bg-green-600 text-white flex items-center gap-2">
                   <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
-                  <span className="text-sm">{voiceUsers.length} in call</span>
+                  <span className="text-sm">Voice Active</span>
                 </div>
-                <button
-                  onClick={toggleMute}
-                  className={`p-2 rounded transition ${
-                    isMuted ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-700 hover:bg-gray-600'
-                  }`}
-                >
-                  {isMuted ? <MicOff className="w-5 h-5 text-white" /> : <Mic className="w-5 h-5 text-white" />}
-                </button>
                 <button
                   onClick={leaveVoiceCall}
                   className="p-2 rounded bg-red-600 hover:bg-red-700 transition"
@@ -439,11 +312,13 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
         />
       )}
 
-      {showVoiceChat && (
+      {/* 🔥 CRITICAL: Using VoiceChat component properly */}
+      {showVoiceChat && voiceChannel && (
         <VoiceChat 
           channelName={voiceChannel}
           userId={user.id}
-          onClose={() => setShowVoiceChat(false)}
+          username={user.displayName || user.email.split('@')[0]}
+          onClose={leaveVoiceCall}
         />
       )}
     </div>
