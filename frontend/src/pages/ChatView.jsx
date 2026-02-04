@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Send, Hash, User, Settings, LogOut, Mic, MicOff, PhoneOff, Volume2, VolumeX, Menu, X, ChevronUp, ChevronDown, Signal } from 'lucide-react';
+// ChatView.jsx - FIXED & OPTIMIZED
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { Send, Hash, Settings, LogOut, Mic, MicOff, PhoneOff, Volume2, VolumeX, Menu, X, ChevronUp, ChevronDown, Signal } from 'lucide-react';
 import { API, AgoraRTC, AgoraRTM } from '../App';
 
-// --- Yardımcı Bileşenler ---
+// --- Helper Components ---
 
 function ProfilePanel({ user, onClose, onUpdate }) {
   const [displayName, setDisplayName] = useState(user.displayName || '');
@@ -116,7 +117,7 @@ function ProfilePanel({ user, onClose, onUpdate }) {
   );
 }
 
-function VoiceUserCard({ userId, username, isSpeaking, isMuted }) {
+const VoiceUserCard = React.memo(({ userId, username, isSpeaking, isMuted }) => {
   return (
     <div className={`flex items-center gap-3 p-2 rounded-lg transition-all ${isSpeaking ? 'bg-gray-700/80 border-l-2 border-green-500' : 'hover:bg-gray-700/50'}`}>
       <div className="relative">
@@ -145,9 +146,8 @@ function VoiceUserCard({ userId, username, isSpeaking, isMuted }) {
       </div>
     </div>
   );
-}
+});
 
-// Mobilde sesli sohbet kontrolleri için yüzen bar
 function MobileVoiceBar({ isOpen, activeChannel, voiceUsers, isMuted, isDeafened, toggleMute, toggleDeafen, leaveVoiceCall }) {
   const [expanded, setExpanded] = useState(false);
   
@@ -155,7 +155,6 @@ function MobileVoiceBar({ isOpen, activeChannel, voiceUsers, isMuted, isDeafened
 
   return (
     <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-700 shadow-xl z-40 pb-safe">
-      {/* Mini Bar (Always Visible) */}
       <div className="flex items-center justify-between px-4 py-3" onClick={() => setExpanded(!expanded)}>
         <div className="flex items-center gap-3">
           <div className="bg-green-500/20 p-2 rounded-full animate-pulse">
@@ -171,7 +170,6 @@ function MobileVoiceBar({ isOpen, activeChannel, voiceUsers, isMuted, isDeafened
         </button>
       </div>
 
-      {/* Expanded Controls */}
       {expanded && (
         <div className="px-4 pb-4 animate-slide-up">
            <div className="max-h-40 overflow-y-auto mb-4 bg-gray-900/50 rounded-lg p-2 space-y-1">
@@ -215,87 +213,71 @@ function MobileVoiceBar({ isOpen, activeChannel, voiceUsers, isMuted, isDeafened
   );
 }
 
-// --- Ana Bileşen ---
+// --- Main Component ---
 
 function ChatView({ user, channels, onLogout, onProfileUpdate }) {
-  const [activeChannel, setActiveChannel] = useState(null);
+  // 🎯 FIX 1: İlk kanal seçimini düzelt - dependency loop'u kaldır
+  const [activeChannel, setActiveChannel] = useState(() => {
+    return channels && channels.length > 0 ? channels[0] : null;
+  });
+  
   const [messages, setMessages] = useState([]);
   const [messageInput, setMessageInput] = useState('');
   const [showProfile, setShowProfile] = useState(false);
   
   // Voice State
   const [inVoiceCall, setInVoiceCall] = useState(false);
-  const [connectionState, setConnectionState] = useState('DISCONNECTED'); // DISCONNECTED, CONNECTING, CONNECTED, RECONNECTING
+  const [connectionState, setConnectionState] = useState('DISCONNECTED');
   const [isMuted, setIsMuted] = useState(false);
   const [isDeafened, setIsDeafened] = useState(false);
   const [voiceUsers, setVoiceUsers] = useState([]);
   const [speakingUsers, setSpeakingUsers] = useState(new Set());
   
-  // Cache ve Refs
+  // Cache & Refs
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const messagesEndRef = useRef(null);
   const rtcClientRef = useRef(null);
   const audioTrackRef = useRef(null);
   const messagePollingRef = useRef(null);
-  const userCacheRef = useRef({}); // UID -> Username cache
+  const userCacheRef = useRef({});
+  const lastMessageCountRef = useRef(0); // 🎯 OPTIMIZATION: Prevent unnecessary updates
 
-  // 1. Initial Load & Channel Selection Logic (Fixed Reload Issue)
+  // 🎯 FIX 2: Channels güncellendiğinde sadece gerekirse activeChannel'ı güncelle
   useEffect(() => {
-    if (channels && channels.length > 0) {
-      if (!activeChannel) {
-        // İlk yükleme veya refresh sonrası
-        setActiveChannel(channels[0]);
-      } else {
-        // Eğer mevcut kanal listeden silindiyse veya güncellendiyse kontrol et
-        const currentStillExists = channels.find(c => (c.id || c._id) === (activeChannel.id || activeChannel._id));
-        if (!currentStillExists) {
-           setActiveChannel(channels[0]);
-        }
-      }
+    if (channels && channels.length > 0 && !activeChannel) {
+      setActiveChannel(channels[0]);
     }
-  }, [channels, activeChannel]);
+  }, [channels]); // activeChannel'ı dependency'den çıkar
 
-  // 2. Message Loading & Polling
+  // 🎯 FIX 3: Message Loading & Polling (Optimized)
   useEffect(() => {
-    if (activeChannel) {
-      const channelId = activeChannel.id || activeChannel._id;
-      loadMessages(channelId);
-      startMessagePolling();
-      
-      // RTM'e katıl (Chat odası için)
-      initializeRTM(activeChannel.name);
-
-      setSidebarOpen(false); // Mobilde kanal değişince menüyü kapat
-    }
+    if (!activeChannel) return;
     
+    const channelId = activeChannel.id || activeChannel._id;
+    loadMessages(channelId);
+    startMessagePolling(channelId);
+    initializeRTM(activeChannel.name);
+    setSidebarOpen(false);
+
     return () => {
       stopMessagePolling();
       cleanupRTM();
     };
   }, [activeChannel]);
 
-  // 3. Auto-scroll to bottom
+  // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    
-    // Mesajlardan kullanıcı önbelleği oluştur (Voice chat isimleri için)
-    messages.forEach(msg => {
-      if (msg.username && !msg.isAnonymous) {
-        // Not: Gerçek app'te user.id ile agora.uid eşleşmesi backend'den gelmeli.
-        // Burada basitçe isimleri topluyoruz.
-        userCacheRef.current[msg.username] = msg.username;
-      }
-    });
   }, [messages]);
 
-  // 4. Cleanup on unmount
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      leaveVoiceCall(); // Component ölürse sesten çık
+      leaveVoiceCall();
     };
   }, []);
 
-  const initializeRTM = async (channelName) => {
+  const initializeRTM = useCallback(async (channelName) => {
     try {
       const tokenData = await API.getAgoraToken();
       await AgoraRTM.initialize(tokenData.appId, tokenData.userId, tokenData.token);
@@ -303,47 +285,49 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
     } catch (error) {
       console.warn('RTM Connection Warning:', error);
     }
-  };
+  }, []);
 
-  const cleanupRTM = async () => {
+  const cleanupRTM = useCallback(async () => {
     try {
       await AgoraRTM.leaveChannel();
     } catch (e) { /* ignore */ }
-  };
+  }, []);
 
-  const startMessagePolling = () => {
+  // 🎯 OPTIMIZATION: Smart polling - only update if message count changed
+  const startMessagePolling = useCallback((channelId) => {
     stopMessagePolling();
     messagePollingRef.current = setInterval(async () => {
-      if (activeChannel) {
-        try {
-          const msgs = await API.getMessages(activeChannel.id || activeChannel._id);
-          // Sadece yeni mesaj varsa update et (optimizasyon eklenebilir)
+      try {
+        const msgs = await API.getMessages(channelId);
+        if (msgs.length !== lastMessageCountRef.current) {
           setMessages(msgs);
-        } catch (error) {
-          console.error('Polling error:', error);
+          lastMessageCountRef.current = msgs.length;
         }
+      } catch (error) {
+        console.error('Polling error:', error);
       }
-    }, 3000); // 3 saniyeye çektim, sunucuyu yormamak için
-  };
+    }, 5000); // 5 saniye - daha az yük
+  }, []);
 
-  const stopMessagePolling = () => {
+  const stopMessagePolling = useCallback(() => {
     if (messagePollingRef.current) {
       clearInterval(messagePollingRef.current);
       messagePollingRef.current = null;
     }
-  };
+  }, []);
 
-  const loadMessages = async (channelId) => {
+  const loadMessages = useCallback(async (channelId) => {
     try {
       const msgs = await API.getMessages(channelId);
       setMessages(msgs);
+      lastMessageCountRef.current = msgs.length;
     } catch (error) {
       console.error('Mesaj yükleme hatası:', error);
     }
-  };
+  }, []);
 
-  const handleSendMessage = async () => {
-    if (!messageInput.trim()) return;
+  const handleSendMessage = useCallback(async () => {
+    if (!messageInput.trim() || !activeChannel) return;
 
     const tempId = `temp-${Date.now()}`;
     const optimisticMessage = {
@@ -374,156 +358,142 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
       setMessages(prev => prev.filter(m => m._id !== tempId));
       setMessageInput(currentInput);
     }
-  };
+  }, [messageInput, activeChannel, user]);
 
-  // --- Geliştirilmiş Sesli Sohbet Mantığı ---
-
-  const joinVoiceCall = async () => {
-  if (connectionState === 'CONNECTING' || connectionState === 'CONNECTED') return;
-  
-  try {
-    setConnectionState('CONNECTING');
-    const channelName = `voice-${activeChannel.name}`;
+  // 🔥 FIX 4: Voice Call - channelUsers'ı kullan
+  const joinVoiceCall = useCallback(async () => {
+    if (connectionState === 'CONNECTING' || connectionState === 'CONNECTED') return;
     
-    // Token al
-     const tokenData = await API.getAgoraRtcToken(channelName);
-  if (tokenData.channelUsers) {
-    tokenData.channelUsers.forEach(u => {
-      userCacheRef.current[u.uid] = u.username;
-    });}
-    
-    // Client oluştur
-    if (!rtcClientRef.current) {
-      rtcClientRef.current = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
-    }
-
-    const client = rtcClientRef.current;
-
-    // Event Listener'ları ekle (önce temizle ki dublike olmasın)
-    client.removeAllListeners();
-
-    // USER PUBLISHED - Yeni kullanıcı yayına başladı
-    client.on('user-published', async (user, mediaType) => {
-      console.log('User published:', user.uid, mediaType);
-      try {
-        await client.subscribe(user, mediaType);
-        console.log('Subscribed to user:', user.uid);
-        
-        if (mediaType === 'audio') {
-          user.audioTrack.play();
-          // Kullanıcıyı listeye ekle/güncelle
-          updateVoiceUser(user.uid, { isMuted: false });
-        }
-      } catch (error) {
-        console.error('Subscribe error:', error);
-      }
-    });
-
-    // USER UNPUBLISHED - Kullanıcı yayını durdurdu (ama odada)
-    client.on('user-unpublished', (user, mediaType) => {
-      console.log('User unpublished:', user.uid, mediaType);
-      if (mediaType === 'audio') {
-        updateVoiceUser(user.uid, { isMuted: true });
-      }
-    });
-
-    // USER JOINED - Yeni kullanıcı odaya katıldı
-    client.on('user-joined', (user) => {
-      console.log('User joined:', user.uid);
-      // Kullanıcıyı listeye ekle (henüz yayın yapmıyor olabilir)
-      updateVoiceUser(user.uid, { isMuted: true });
-    });
-
-    // USER LEFT - Kullanıcı odadan ayrıldı
-    client.on('user-left', (user) => {
-      console.log('User left:', user.uid);
-      removeVoiceUser(user.uid);
-    });
-
-    // VOLUME INDICATOR - Konuşma tespiti
-    client.on('volume-indicator', (volumes) => {
-      const speaking = new Set();
-      volumes.forEach(v => {
-        if (v.level > 5) speaking.add(v.uid);
-      });
-      setSpeakingUsers(speaking);
-    });
-    
-    // CONNECTION STATE - Bağlantı durumu değişimi
-    client.on('connection-state-change', (curState, prevState) => {
-      console.log('Agora State:', prevState, '->', curState);
-      setConnectionState(curState);
-      if (curState === 'DISCONNECTED') {
-        if (inVoiceCall) leaveVoiceCall(); 
-      }
-    });
-
-    // Kanala katıl
-    const uid = await client.join(tokenData.appId, channelName, tokenData.token, tokenData.uid);
-    console.log('Joined channel with UID:', uid);
-
-    // Audio track oluştur ve yayınla
-    audioTrackRef.current = await AgoraRTC.createMicrophoneAudioTrack({
-      encoderConfig: 'speech_standard',
-      AEC: true, 
-      ANS: true, 
-      AGC: true
-    });
-    
-    await client.publish([audioTrackRef.current]);
-    
-    // Volume indicator'ı PUBLISH'den SONRA başlat
-    client.enableAudioVolumeIndicator();
-
-    // Kendini listeye ekle
-    const myUsername = user.displayName || user.email.split('@')[0];
-    userCacheRef.current[uid] = myUsername;
-    
-    addVoiceUser({
-      uid: uid,
-      username: myUsername,
-      isMuted: false,
-      isLocal: true
-    });
-
-    // CRITICAL FIX: Mevcut remote kullanıcıları tarayıp subscribe ol
-    console.log('Remote users in channel:', client.remoteUsers.length);
-    
-    // Kısa bir gecikme ekle - diğer kullanıcıların track'lerinin hazır olması için
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    for (const remoteUser of client.remoteUsers) {
-      console.log('Processing existing remote user:', remoteUser.uid);
+    try {
+      setConnectionState('CONNECTING');
+      const channelName = `voice-${activeChannel.name}`;
       
-      // Kullanıcıyı listeye ekle
-      updateVoiceUser(remoteUser.uid, { isMuted: !remoteUser.hasAudio });
+      // Token al
+      const tokenData = await API.getAgoraRtcToken(channelName);
       
-      // Eğer audio track varsa subscribe ol
-      if (remoteUser.hasAudio && remoteUser.audioTrack) {
+      // 🎯 Backend'den gelen kullanıcı listesini cache'e ekle
+      if (tokenData.channelUsers) {
+        tokenData.channelUsers.forEach(u => {
+          userCacheRef.current[u.uid] = u.username;
+        });
+        console.log('👥 Cached users:', tokenData.channelUsers.length);
+      }
+      
+      // Client oluştur
+      if (!rtcClientRef.current) {
+        rtcClientRef.current = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+      }
+
+      const client = rtcClientRef.current;
+      client.removeAllListeners();
+
+      // Event Listeners
+      client.on('user-published', async (user, mediaType) => {
+        console.log('User published:', user.uid, mediaType);
         try {
-          await client.subscribe(remoteUser, 'audio');
-          remoteUser.audioTrack.play();
-          console.log('Subscribed to existing user audio:', remoteUser.uid);
-          updateVoiceUser(remoteUser.uid, { isMuted: false });
+          await client.subscribe(user, mediaType);
+          console.log('Subscribed to user:', user.uid);
+          
+          if (mediaType === 'audio') {
+            user.audioTrack.play();
+            updateVoiceUser(user.uid, { isMuted: false });
+          }
         } catch (error) {
-          console.error('Error subscribing to existing user:', remoteUser.uid, error);
+          console.error('Subscribe error:', error);
+        }
+      });
+
+      client.on('user-unpublished', (user, mediaType) => {
+        console.log('User unpublished:', user.uid, mediaType);
+        if (mediaType === 'audio') {
+          updateVoiceUser(user.uid, { isMuted: true });
+        }
+      });
+
+      client.on('user-joined', (user) => {
+        console.log('User joined:', user.uid);
+        updateVoiceUser(user.uid, { isMuted: true });
+      });
+
+      client.on('user-left', (user) => {
+        console.log('User left:', user.uid);
+        removeVoiceUser(user.uid);
+      });
+
+      client.on('volume-indicator', (volumes) => {
+        const speaking = new Set();
+        volumes.forEach(v => {
+          if (v.level > 5) speaking.add(v.uid);
+        });
+        setSpeakingUsers(speaking);
+      });
+      
+      client.on('connection-state-change', (curState, prevState) => {
+        console.log('Agora State:', prevState, '->', curState);
+        setConnectionState(curState);
+        if (curState === 'DISCONNECTED' && inVoiceCall) {
+          leaveVoiceCall(); 
+        }
+      });
+
+      // Kanala katıl
+      const uid = await client.join(tokenData.appId, channelName, tokenData.token, tokenData.uid);
+      console.log('Joined channel with UID:', uid);
+
+      // Audio track oluştur ve yayınla
+      audioTrackRef.current = await AgoraRTC.createMicrophoneAudioTrack({
+        encoderConfig: 'speech_standard',
+        AEC: true, 
+        ANS: true, 
+        AGC: true
+      });
+      
+      await client.publish([audioTrackRef.current]);
+      client.enableAudioVolumeIndicator();
+
+      // Kendini listeye ekle
+      const myUsername = tokenData.username || user.displayName || user.email.split('@')[0];
+      userCacheRef.current[uid] = myUsername;
+      
+      addVoiceUser({
+        uid: uid,
+        username: myUsername,
+        isMuted: false,
+        isLocal: true
+      });
+
+      // 🎯 Mevcut kullanıcıları yükle
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      for (const remoteUser of client.remoteUsers) {
+        console.log('Processing existing remote user:', remoteUser.uid);
+        updateVoiceUser(remoteUser.uid, { isMuted: !remoteUser.hasAudio });
+        
+        if (remoteUser.hasAudio && remoteUser.audioTrack) {
+          try {
+            await client.subscribe(remoteUser, 'audio');
+            remoteUser.audioTrack.play();
+            console.log('Subscribed to existing user audio:', remoteUser.uid);
+            updateVoiceUser(remoteUser.uid, { isMuted: false });
+          } catch (error) {
+            console.error('Error subscribing to existing user:', remoteUser.uid, error);
+          }
         }
       }
+
+      setInVoiceCall(true);
+      setConnectionState('CONNECTED');
+      console.log('Voice call setup complete');
+
+    } catch (error) {
+      console.error('Ses bağlantı hatası:', error);
+      alert('Sesli sohbete bağlanılamadı. Lütfen mikrofon izinlerini kontrol edin.');
+      setConnectionState('DISCONNECTED');
+      leaveVoiceCall();
     }
+  }, [connectionState, activeChannel, user, inVoiceCall]);
 
-    setInVoiceCall(true);
-    setConnectionState('CONNECTED');
-    console.log('Voice call setup complete');
-
-  } catch (error) {
-    console.error('Ses bağlantı hatası:', error);
-    alert('Sesli sohbete bağlanılamadı. Lütfen mikrofon izinlerini kontrol edin.');
-    setConnectionState('DISCONNECTED');
-    leaveVoiceCall();
-  }
-};
-
-  const leaveVoiceCall = async () => {
+  const leaveVoiceCall = useCallback(async () => {
     try {
       if (audioTrackRef.current) {
         audioTrackRef.current.close();
@@ -533,8 +503,6 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
       if (rtcClientRef.current) {
         rtcClientRef.current.removeAllListeners();
         await rtcClientRef.current.leave();
-        // Client'ı null yapmıyoruz, reuse edebiliriz veya tekrar oluşturabiliriz.
-        // Ama temiz state için null yapmak daha güvenli olabilir.
         rtcClientRef.current = null; 
       }
     } catch (e) {
@@ -547,14 +515,12 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
       setIsDeafened(false);
       setConnectionState('DISCONNECTED');
     }
-  };
+  }, []);
 
-  // Helper: Kullanıcı listesini güncelleme (Ad sorunu çözümü)
-  const updateVoiceUser = (uid, data = {}) => {
+  const updateVoiceUser = useCallback((uid, data = {}) => {
     setVoiceUsers(prev => {
       const existing = prev.find(u => u.uid === uid);
       
-      // İsim bulma mantığı: Cache'den bak, yoksa fallback yap
       let username = existing?.username;
       if (!username) {
          username = userCacheRef.current[uid] || `Misafir ${String(uid).slice(-4)}`;
@@ -566,38 +532,37 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
         return [...prev, { uid, username, isMuted: false, ...data }];
       }
     });
-  };
+  }, []);
   
-  const removeVoiceUser = (uid) => {
+  const removeVoiceUser = useCallback((uid) => {
     setVoiceUsers(prev => prev.filter(u => u.uid !== uid));
     setSpeakingUsers(prev => {
       const next = new Set(prev);
       next.delete(uid);
       return next;
     });
-  };
+  }, []);
 
-  const addVoiceUser = (userObj) => {
+  const addVoiceUser = useCallback((userObj) => {
     setVoiceUsers(prev => {
        if (prev.find(u => u.uid === userObj.uid)) return prev;
        return [...prev, userObj];
     });
-  };
+  }, []);
 
-  const toggleMute = async () => {
+  const toggleMute = useCallback(async () => {
     if (audioTrackRef.current) {
       const newState = !isMuted;
       await audioTrackRef.current.setMuted(newState);
       setIsMuted(newState);
     }
-  };
+  }, [isMuted]);
 
-  const toggleDeafen = () => {
+  const toggleDeafen = useCallback(() => {
     const newState = !isDeafened;
     setIsDeafened(newState);
-    if (newState && !isMuted) toggleMute(); // Sağır olunca mikrofonu da kapat
+    if (newState && !isMuted) toggleMute();
     
-    // Remote user seslerini kapat/aç
     if (rtcClientRef.current) {
       rtcClientRef.current.remoteUsers.forEach(user => {
         if (user.audioTrack) {
@@ -605,7 +570,7 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
         }
       });
     }
-  };
+  }, [isDeafened, isMuted, toggleMute]);
 
   const groupedChannels = useMemo(() => {
     return channels.reduce((acc, channel) => {
@@ -618,19 +583,17 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
   return (
     <div className="h-screen flex bg-gray-900 overflow-hidden font-sans">
       
-      {/* Mobile Sidebar Overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 bg-black/60 z-40 lg:hidden backdrop-blur-sm transition-opacity" onClick={() => setSidebarOpen(false)} />
       )}
 
-      {/* --- SIDEBAR --- */}
+      {/* SIDEBAR */}
       <div className={`
         fixed lg:relative inset-y-0 left-0 z-50
         w-72 bg-gray-800 flex flex-col border-r border-gray-700
         transform transition-transform duration-300 ease-in-out shadow-2xl
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
-        {/* Header */}
         <div className="h-16 flex items-center justify-between px-6 border-b border-gray-700 bg-gray-800">
           <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
             Destek Topluluğu
@@ -640,7 +603,6 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
           </button>
         </div>
 
-        {/* Channels List */}
         <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
           {Object.entries(groupedChannels).map(([category, categoryChannels]) => (
             <div key={category} className="mb-6">
@@ -672,7 +634,6 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
           ))}
         </div>
 
-        {/* Desktop Voice Panel (Hidden on Mobile if not expanded, handled by floating bar) */}
         {inVoiceCall && (
           <div className="hidden lg:block bg-gray-900/50 border-t border-gray-700 backdrop-blur-md">
             <div className="p-3 border-b border-gray-700/50 flex items-center justify-between">
@@ -709,7 +670,6 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
           </div>
         )}
 
-        {/* User Profile Bar */}
         <div className="bg-gray-850 p-4 border-t border-gray-700">
           <div className="flex items-center gap-3">
             <div className="relative group cursor-pointer" onClick={() => setShowProfile(true)}>
@@ -734,10 +694,9 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
         </div>
       </div>
 
-      {/* --- MAIN CHAT AREA --- */}
+      {/* MAIN CHAT AREA */}
       <div className="flex-1 flex flex-col min-w-0 bg-gray-900 relative">
         
-        {/* Chat Header */}
         <div className="h-16 border-b border-gray-700 flex items-center justify-between px-4 sm:px-6 bg-gray-800 shadow-sm z-10">
           <div className="flex items-center min-w-0">
             <button onClick={() => setSidebarOpen(true)} className="lg:hidden mr-4 text-gray-400 hover:text-white">
@@ -757,20 +716,22 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
           {!inVoiceCall ? (
              <button
                onClick={joinVoiceCall}
-               className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition shadow-lg hover:shadow-green-500/20 active:scale-95"
+               disabled={connectionState === 'CONNECTING'}
+               className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition shadow-lg hover:shadow-green-500/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
              >
                <Mic size={18} />
-               <span className="hidden sm:inline font-medium">Sesli Sohbet</span>
+               <span className="hidden sm:inline font-medium">
+                 {connectionState === 'CONNECTING' ? 'Bağlanıyor...' : 'Sesli Sohbet'}
+               </span>
              </button>
           ) : (
             <div className="hidden lg:flex items-center gap-2 px-4 py-2 bg-green-900/30 border border-green-500/30 text-green-400 rounded-lg">
                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-               <span className="font-medium text-sm">Bağlı</span>
+               <span className="font-medium text-sm">Bağlı ({voiceUsers.length})</span>
             </div>
           )}
         </div>
 
-        {/* Messages List */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 custom-scrollbar scroll-smooth">
           {messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center opacity-50">
@@ -800,7 +761,7 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
                       {msg.username?.[0]?.toUpperCase() || '?'}
                     </div>
                   ) : (
-                    <div className="w-10 flex-shrink-0" /> // Spacer
+                    <div className="w-10 flex-shrink-0" />
                   )}
                   
                   <div className="flex-1 min-w-0">
@@ -825,7 +786,6 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
           <div ref={messagesEndRef} className="h-4" />
         </div>
 
-        {/* Floating Voice Bar (Mobile Only) */}
         {inVoiceCall && (
           <MobileVoiceBar 
             isOpen={true}
@@ -839,7 +799,6 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
           />
         )}
 
-        {/* Input Area */}
         <div className={`p-4 bg-gray-800 border-t border-gray-700 ${inVoiceCall ? 'lg:pb-4 pb-20' : ''}`}>
           <div className="relative flex items-center bg-gray-700/50 rounded-xl border border-gray-600/50 focus-within:border-indigo-500/50 focus-within:ring-1 focus-within:ring-indigo-500/50 transition shadow-inner">
              <input
@@ -864,7 +823,6 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
         </div>
       </div>
 
-      {/* Profile Modal */}
       {showProfile && (
         <ProfilePanel
           user={user}

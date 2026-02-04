@@ -1,4 +1,4 @@
-// server.js - Complete Backend with Fixed Agora RTM
+// server.js - FIXED & OPTIMIZED Backend
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -20,11 +20,11 @@ app.use(express.json());
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/support-platform', {
   useNewUrlParser: true,
   useUnifiedTopology: true
-}).then(() => console.log('MongoDB connected'))
-  .catch(err => console.error('MongoDB connection error:', err));
+}).then(() => console.log('✅ MongoDB connected'))
+  .catch(err => console.error('❌ MongoDB connection error:', err));
 
-console.log('AGORA_APP_ID:', process.env.AGORA_APP_ID);
-console.log('AGORA_APP_CERTIFICATE:', process.env.AGORA_APP_CERTIFICATE ? 'Configured' : 'Missing');
+console.log('🔑 AGORA_APP_ID:', process.env.AGORA_APP_ID);
+console.log('🔐 AGORA_APP_CERTIFICATE:', process.env.AGORA_APP_CERTIFICATE ? 'Configured' : 'Missing');
 
 // Models
 const UserSchema = new mongoose.Schema({
@@ -47,14 +47,8 @@ const UserSchema = new mongoose.Schema({
 
 const AssessmentResultSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  answers: {
-    type: Object,
-    required: true
-  },
-  score: {
-    type: Number,
-    required: true
-  },
+  answers: Object,
+  score: Number,
   gender: String,
   age: Number,
   education: String,
@@ -94,6 +88,9 @@ const Channel = mongoose.model('Channel', ChannelSchema);
 const Message = mongoose.model('Message', MessageSchema);
 const Assessment = mongoose.model('Assessment', AssessmentSchema);
 const AssessmentResult = mongoose.model('AssessmentResult', AssessmentResultSchema);
+
+// 🎯 Active Voice Users Tracker (in-memory)
+const activeVoiceUsers = new Map(); // channelName -> Map(uid -> {username, joinedAt})
 
 // Middleware to verify JWT token
 const authMiddleware = async (req, res, next) => {
@@ -168,7 +165,7 @@ function hashCode(str) {
     hash = ((hash << 5) - hash) + char;
     hash = hash & hash;
   }
-  return hash;
+  return Math.abs(hash);
 }
 
 // ========================================
@@ -456,55 +453,6 @@ app.post('/api/assessment/submit', authMiddleware, async (req, res) => {
   }
 });
 
-// Alternative route without /api prefix
-app.post('/assessment/submit', authMiddleware, async (req, res) => {
-  try {
-    const { answers } = req.body;
-    
-    const score = Object.values(answers).filter(answer => answer === 'yes').length;
-    
-    const assessmentResult = new AssessmentResult({
-      userId: req.user._id,
-      answers,
-      score,
-      gender: req.user.gender,
-      age: req.user.age,
-      education: req.user.education
-    });
-    
-    await assessmentResult.save();
-    
-    const updatedUser = await User.findByIdAndUpdate(
-      req.user._id,
-      {
-        $set: {
-          assessmentAnswers: answers,
-          assessmentScore: score,
-          hasCompletedAssessment: true,
-          assignedChannels: ['general', 'support']
-        }
-      },
-      { new: true }
-    );
-    
-    if (!updatedUser) {
-      return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
-    }
-    
-    res.json({ 
-      success: true,
-      score,
-      totalQuestions: 16,
-      percentage: Math.round((score / 16) * 100),
-      assignedChannels: updatedUser.assignedChannels
-    });
-  } catch (error) {
-    console.error('Assessment submission error:', error);
-    res.status(500).json({ error: 'Anket gönderilemedi', details: error.message });
-  }
-});
-
-// Channel Routes
 // Channel Routes
 app.get('/api/channels', authMiddleware, async (req, res) => {
   try {
@@ -519,63 +467,31 @@ app.get('/api/channels', authMiddleware, async (req, res) => {
   }
 });
 
-// Admin can fetch all channels without user context
 app.get('/api/channels/all', async (req, res) => {
   try {
     const token = req.header('Authorization')?.replace('Bearer ', '');
     
-    console.log('📋 GET /api/channels/all');
-    console.log('Token present:', !!token);
-    
-    // Check if it's an admin token
     if (token) {
-      let decoded;
       try {
-        decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
-        console.log('✅ Token verified:', decoded.adminAccess || decoded.isAdmin ? 'Admin' : 'User');
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
         
         if (decoded.adminAccess || decoded.isAdmin) {
-          // Admin can see all channels
           const channels = await Channel.find({});
-          console.log('✅ Admin: Returning all channels:', channels.length);
           return res.json(channels);
         }
-        // User token - show only public channels
         const channels = await Channel.find({ isPublic: true });
-        console.log('✅ User: Returning public channels:', channels.length);
         return res.json(channels);
       } catch (err) {
-        console.log('❌ Token verification failed:', err.message);
-        // Token invalid, show only public channels
         const channels = await Channel.find({ isPublic: true });
-        console.log('✅ Invalid token: Returning public channels:', channels.length);
         return res.json(channels);
       }
     }
     
-    // No token: show only public channels
     const channels = await Channel.find({ isPublic: true });
-    console.log('✅ No token: Returning public channels:', channels.length);
     res.json(channels);
   } catch (error) {
     console.error('❌ Channels fetch error:', error);
     res.status(500).json({ error: 'Failed to fetch channels' });
-  }
-});
-
-app.get('/api/channels/search', authMiddleware, async (req, res) => {
-  try {
-    const { query } = req.query;
-    const channels = await Channel.find({
-      isPublic: true,
-      $or: [
-        { name: { $regex: query, $options: 'i' } },
-        { description: { $regex: query, $options: 'i' } }
-      ]
-    });
-    res.json(channels);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to search channels' });
   }
 });
 
@@ -681,6 +597,49 @@ app.post('/api/channels/:channelId/messages', authMiddleware, async (req, res) =
   }
 });
 
+app.delete('/api/channels/:channelId/messages/:messageId', authMiddleware, async (req, res) => {
+  try {
+    const { channelId, messageId } = req.params;
+    
+    const message = await Message.findOne({ 
+      _id: messageId, 
+      channelId: channelId 
+    });
+    
+    if (!message) {
+      return res.status(404).json({ error: 'Mesaj bulunamadı' });
+    }
+    
+    if (message.userId !== req.user._id.toString() && !req.user.isAdmin) {
+      return res.status(403).json({ error: 'Bu mesajı silme yetkiniz yok' });
+    }
+    
+    await Message.findByIdAndDelete(messageId);
+    
+    res.json({ success: true, message: 'Mesaj silindi' });
+  } catch (error) {
+    console.error('Mesaj silme hatası:', error);
+    res.status(500).json({ error: 'Mesaj silinemedi' });
+  }
+});
+
+app.delete('/api/channels/:channelId/messages', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { channelId } = req.params;
+    
+    const result = await Message.deleteMany({ channelId: channelId });
+    
+    res.json({ 
+      success: true, 
+      message: `${result.deletedCount} mesaj silindi`,
+      deletedCount: result.deletedCount
+    });
+  } catch (error) {
+    console.error('Kanal mesajları silme hatası:', error);
+    res.status(500).json({ error: 'Mesajlar silinemedi' });
+  }
+});
+
 // Profile Routes
 app.get('/api/profile', authMiddleware, async (req, res) => {
   try {
@@ -745,53 +704,34 @@ app.put('/api/admin/assessment', authMiddleware, adminMiddleware, async (req, re
 });
 
 // ========================================
-// AGORA ROUTES
+// 🎯 AGORA ROUTES (FIXED)
 // ========================================
 
 // RTM Token Endpoint (Text Messaging)
 app.get('/api/agora/token', authenticateToken, async (req, res) => {
   try {
-    console.log('🔹 RTM Token isteği alındı');
-    
     const AGORA_APP_ID = process.env.AGORA_APP_ID;
     const AGORA_APP_CERTIFICATE = process.env.AGORA_APP_CERTIFICATE;
     
     if (!AGORA_APP_ID || !AGORA_APP_CERTIFICATE) {
-      console.error('❌ Agora credentials eksik!');
       return res.status(500).json({ error: 'Agora credentials not configured' });
     }
 
-    // User ID - MongoDB ObjectId as string
     const userId = req.user.userId.toString();
     
-    console.log('🔹 RTM Token oluşturuluyor...');
-    console.log('🔹 User ID:', userId);
-    console.log('🔹 APP_ID:', AGORA_APP_ID);
-    console.log('🔹 APP_CERTIFICATE:', AGORA_APP_CERTIFICATE.substring(0, 10) + '...');
-
-    // ⚠️ CRITICAL FIX: For RTM SDK 1.5.x, use 0 for expiration (no expiration)
-    // or use current timestamp + seconds
     const currentTimestamp = Math.floor(Date.now() / 1000);
     const expirationTimeInSeconds = 3600 * 24; // 24 hours
     const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
 
-    console.log('🔹 Current timestamp:', currentTimestamp);
-    console.log('🔹 Expiration timestamp:', privilegeExpiredTs);
-    console.log('🔹 Time until expiration (hours):', expirationTimeInSeconds / 3600);
-
-    // ⚠️ IMPORTANT: Use RtmTokenBuilder.buildToken with exact parameters
     const token = RtmTokenBuilder.buildToken(
-      AGORA_APP_ID,              // appId
-      AGORA_APP_CERTIFICATE,      // appCertificate
-      userId,                     // userId (string)
-      RtmRole.Rtm_User,          // role
-      privilegeExpiredTs          // privilegeExpiredTs
+      AGORA_APP_ID,
+      AGORA_APP_CERTIFICATE,
+      userId,
+      RtmRole.Rtm_User,
+      privilegeExpiredTs
     );
 
-    console.log('✅ RTM Token başarıyla oluşturuldu');
-    console.log('Token uzunluğu:', token.length);
-    console.log('Token preview:', token.substring(0, 50) + '...');
-    console.log('Token full:', token);
+    console.log('✅ RTM Token generated for user:', userId);
 
     res.json({
       appId: AGORA_APP_ID,
@@ -801,10 +741,7 @@ app.get('/api/agora/token', authenticateToken, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ RTM Token oluşturma hatası:', error);
-    console.error('Error name:', error.name);
-    console.error('Error message:', error.message);
-    console.error('Error stack:', error.stack);
+    console.error('❌ RTM Token error:', error);
     res.status(500).json({ 
       error: 'Failed to generate RTM token', 
       details: error.message 
@@ -812,7 +749,7 @@ app.get('/api/agora/token', authenticateToken, async (req, res) => {
   }
 });
 
-// RTC Token Endpoint (Voice Chat)
+// 🔥 RTC Token Endpoint (Voice Chat) - FIXED WITH USER LIST
 app.get('/api/agora/rtc-token', authenticateToken, async (req, res) => {
   try {
     const { channelName } = req.query;
@@ -837,7 +774,7 @@ app.get('/api/agora/rtc-token', authenticateToken, async (req, res) => {
     if (req.user.userId && !isNaN(parseInt(req.user.userId))) {
       uid = parseInt(req.user.userId);
     } else {
-      uid = Math.abs(hashCode(req.user.userId.toString()));
+      uid = hashCode(req.user.userId.toString());
     }
 
     // Get username
@@ -860,7 +797,38 @@ app.get('/api/agora/rtc-token', authenticateToken, async (req, res) => {
       privilegeExpiredTs
     );
 
+    // 🎯 Track active user
+    if (!activeVoiceUsers.has(channelName)) {
+      activeVoiceUsers.set(channelName, new Map());
+    }
+    activeVoiceUsers.get(channelName).set(uid, {
+      username,
+      joinedAt: Date.now()
+    });
+
+    // Clean up old users (older than 2 hours)
+    const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
+    for (const [ch, users] of activeVoiceUsers.entries()) {
+      for (const [u, data] of users.entries()) {
+        if (data.joinedAt < twoHoursAgo) {
+          users.delete(u);
+        }
+      }
+      if (users.size === 0) {
+        activeVoiceUsers.delete(ch);
+      }
+    }
+
+    // Get current channel users
+    const channelUsers = [];
+    if (activeVoiceUsers.has(channelName)) {
+      for (const [u, data] of activeVoiceUsers.get(channelName).entries()) {
+        channelUsers.push({ uid: u, username: data.username });
+      }
+    }
+
     console.log(`✅ RTC Token generated for ${username} (UID: ${uid}) in channel ${channelName}`);
+    console.log(`👥 Active users in ${channelName}:`, channelUsers.length);
 
     res.json({
       appId: AGORA_APP_ID,
@@ -868,6 +836,7 @@ app.get('/api/agora/rtc-token', authenticateToken, async (req, res) => {
       token: token,
       uid: uid,
       username: username,
+      channelUsers: channelUsers, // ← CRITICAL: Frontend needs this
       expiresAt: privilegeExpiredTs
     });
 
@@ -898,50 +867,7 @@ async function initializeDefaultChannels() {
     console.log('✅ Default channels created');
   }
 }
-app.delete('/api/channels/:channelId/messages/:messageId', authMiddleware, async (req, res) => {
-  try {
-    const { channelId, messageId } = req.params;
-    
-    const message = await Message.findOne({ 
-      _id: messageId, 
-      channelId: channelId 
-    });
-    
-    if (!message) {
-      return res.status(404).json({ error: 'Mesaj bulunamadı' });
-    }
-    
-    // Kullanıcı sadece kendi mesajını silebilir (veya admin ise)
-    if (message.userId !== req.user._id.toString() && !req.user.isAdmin) {
-      return res.status(403).json({ error: 'Bu mesajı silme yetkiniz yok' });
-    }
-    
-    await Message.findByIdAndDelete(messageId);
-    
-    res.json({ success: true, message: 'Mesaj silindi' });
-  } catch (error) {
-    console.error('Mesaj silme hatası:', error);
-    res.status(500).json({ error: 'Mesaj silinemedi' });
-  }
-});
 
-// Tüm kanal mesajlarını silme (sadece admin)
-app.delete('/api/channels/:channelId/messages', authMiddleware, adminMiddleware, async (req, res) => {
-  try {
-    const { channelId } = req.params;
-    
-    const result = await Message.deleteMany({ channelId: channelId });
-    
-    res.json({ 
-      success: true, 
-      message: `${result.deletedCount} mesaj silindi`,
-      deletedCount: result.deletedCount
-    });
-  } catch (error) {
-    console.error('Kanal mesajları silme hatası:', error);
-    res.status(500).json({ error: 'Mesajlar silinemedi' });
-  }
-});
 // ========================================
 // START SERVER
 // ========================================
@@ -950,6 +876,6 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, async () => {
   console.log(`✅ Server running on port ${PORT}`);
   console.log(`📡 API: http://localhost:${PORT}/api`);
-  console.log(`🔐 Agora RTM: ${process.env.AGORA_APP_ID ? 'Configured' : 'Missing'}`);
+  console.log(`🔐 Agora: ${process.env.AGORA_APP_ID ? 'Configured' : 'Missing'}`);
   await initializeDefaultChannels();
 });
