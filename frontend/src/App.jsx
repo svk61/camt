@@ -6,7 +6,7 @@ import RegisterView from './pages/RegisterView';
 import AssessmentView from './pages/AssessmentView';
 import ChatView from './pages/ChatView';
 import AdminPanel from './pages/AdminPanel';
-
+import { API } from 'api';  
 // Real API service
 // App.js - Fixed Agora RTM Integration
 // ... (LoginView, RegisterView imports remain same)

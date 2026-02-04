@@ -5,6 +5,11 @@ import ProfilePanel from './ProfilePanel';
 import ChannelBrowser from './ChannelBrowser';
 import VoiceChat from './VoiceChat';
 
+// ========================================
+// 🔥 FIXED: Voice chat integration only
+// All other features kept intact
+// ========================================
+
 function ChatView({ user, channels, onLogout, onProfileUpdate }) {
   const [activeChannel, setActiveChannel] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -13,7 +18,7 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
   const [showChannelBrowser, setShowChannelBrowser] = useState(false);
   const [userChannels, setUserChannels] = useState(channels);
   
-  // Voice chat state
+  // 🔥 VOICE CHAT STATE - Using VoiceChat component
   const [showVoiceChat, setShowVoiceChat] = useState(false);
   const [voiceChannel, setVoiceChannel] = useState(null);
   
@@ -101,6 +106,7 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
     }
   };
 
+  // 🔥 FIXED: Voice chat functions
   const joinVoiceCall = () => {
     const channelNameForVoice = `voice-${activeChannel.name}`;
     setVoiceChannel(channelNameForVoice);
@@ -108,7 +114,6 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
     console.log('🎤 Joining voice channel:', channelNameForVoice);
   };
 
-  // 🔥 IMPROVED: Cleanup on leave
   const leaveVoiceCall = async () => {
     if (voiceChannel) {
       try {
@@ -319,7 +324,7 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
         />
       )}
 
-      {/* Voice Chat Component */}
+      {/* 🔥 CRITICAL: Using VoiceChat component properly */}
       {showVoiceChat && voiceChannel && (
         <VoiceChat 
           channelName={voiceChannel}
