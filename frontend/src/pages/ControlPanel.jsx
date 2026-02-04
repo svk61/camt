@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Trash2, Plus, X, MessageSquare, Users, Settings, BarChart3, Eye } from 'lucide-react';
 
-const API_URL = 'https://api.camtavanapp.com.tr/';
+const API_URL = 'https://api.camtavanapp.com.tr/api';
 
 
 

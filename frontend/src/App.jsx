@@ -20,6 +20,7 @@ const API = {
   },
   
   async request(endpoint, options = {}) {
+    console.log('All env:', import.meta.env);
     const token = this.getToken();
     const headers = {
       'Content-Type': 'application/json',
