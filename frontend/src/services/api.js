@@ -121,8 +121,18 @@ const API = {
   // 🔥 NEW: Get username by UID
   async getUsernameByUid(uid) {
     return this.request(`/agora/user/${uid}`);
-  }
+  },
+  async getChannelUsers(channelName) {
+  return this.request(`/agora/channel/${encodeURIComponent(channelName)}/users`);
+},
+
+async leaveVoiceChannel(channelName) {
+  return this.request(`/agora/channel/${encodeURIComponent(channelName)}/leave`, {
+    method: 'POST'
+  });
+}
 };
+
 
 // ========================================
 // 🔥 REMOVED: All mock Agora code
