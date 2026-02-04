@@ -1,4 +1,4 @@
-// ChatView.jsx - FIXED & OPTIMIZED
+// ChatView.jsx - FINAL - Mobile Optimized + Fixed User Names
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Send, Hash, Settings, LogOut, Mic, MicOff, PhoneOff, Volume2, VolumeX, Menu, X, ChevronUp, ChevronDown, Signal } from 'lucide-react';
 import { API, AgoraRTC, AgoraRTM } from '../App';
@@ -148,63 +148,83 @@ const VoiceUserCard = React.memo(({ userId, username, isSpeaking, isMuted }) => 
   );
 });
 
+// 🔥 MOBILE OPTIMIZED Voice Bar
 function MobileVoiceBar({ isOpen, activeChannel, voiceUsers, isMuted, isDeafened, toggleMute, toggleDeafen, leaveVoiceCall }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(false); // Default collapsed
   
   if (!isOpen) return null;
 
   return (
-    <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-700 shadow-xl z-40 pb-safe">
-      <div className="flex items-center justify-between px-4 py-3" onClick={() => setExpanded(!expanded)}>
-        <div className="flex items-center gap-3">
-          <div className="bg-green-500/20 p-2 rounded-full animate-pulse">
-            <Signal className="w-5 h-5 text-green-500" />
+    <div 
+      className="lg:hidden fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-700 shadow-xl z-40 safe-area-bottom"
+      style={{
+        paddingBottom: 'env(safe-area-inset-bottom)',
+      }}
+    >
+      {/* Mini Bar - Always Visible - Larger tap target */}
+      <div 
+        className="flex items-center justify-between px-4 py-4 cursor-pointer active:bg-gray-700/50 transition-colors" 
+        onClick={() => setExpanded(!expanded)}
+      >
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <div className="bg-green-500/20 p-2 rounded-full flex-shrink-0">
+            <Signal className="w-5 h-5 text-green-500 animate-pulse" />
           </div>
-          <div>
-            <p className="text-white font-medium text-sm">Sesli Sohbet</p>
-            <p className="text-green-400 text-xs">{voiceUsers.length} kişi bağlı • {activeChannel?.name}</p>
+          <div className="min-w-0 flex-1">
+            <p className="text-white font-medium text-sm truncate">Sesli Sohbet</p>
+            <p className="text-green-400 text-xs truncate">{voiceUsers.length} kişi • {activeChannel?.name}</p>
           </div>
         </div>
-        <button onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }} className="text-gray-400">
-          {expanded ? <ChevronDown /> : <ChevronUp />}
+        <button 
+          onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }} 
+          className="text-gray-400 p-2 -mr-2 hover:bg-gray-700/50 rounded-lg transition-colors flex-shrink-0"
+        >
+          {expanded ? <ChevronDown size={20} /> : <ChevronUp size={20} />}
         </button>
       </div>
 
+      {/* Expanded Controls */}
       {expanded && (
-        <div className="px-4 pb-4 animate-slide-up">
-           <div className="max-h-40 overflow-y-auto mb-4 bg-gray-900/50 rounded-lg p-2 space-y-1">
+        <div className="px-4 pb-4 animate-slide-down">
+           {/* User List */}
+           <div className="max-h-32 overflow-y-auto mb-4 bg-gray-900/50 rounded-lg p-2 space-y-1 scrollbar-thin scrollbar-thumb-gray-700">
              {voiceUsers.map(u => (
-               <div key={u.uid} className="flex items-center gap-2 text-white text-sm p-1">
-                 <div className={`w-2 h-2 rounded-full ${u.isSpeaking ? 'bg-green-500' : 'bg-gray-500'}`}></div>
-                 <span className="flex-1 truncate">{u.username}</span>
-                 {u.isMuted && <MicOff size={12} className="text-red-400" />}
+               <div key={u.uid} className="flex items-center gap-2 text-white text-sm p-2 rounded hover:bg-gray-700/50">
+                 <div className={`w-2 h-2 rounded-full flex-shrink-0 ${u.isSpeaking ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`}></div>
+                 <span className="flex-1 truncate font-medium">{u.username}</span>
+                 {u.isMuted && <MicOff size={14} className="text-red-400 flex-shrink-0" />}
                </div>
              ))}
            </div>
            
-           <div className="flex items-center justify-between gap-4">
+           {/* Control Buttons - Larger for mobile */}
+           <div className="grid grid-cols-3 gap-3">
             <button 
               onClick={toggleMute}
-              className={`flex-1 flex flex-col items-center gap-1 p-3 rounded-xl transition ${isMuted ? 'bg-white text-red-600' : 'bg-gray-700 text-white'}`}
+              className={`flex flex-col items-center gap-2 p-4 rounded-xl transition-all active:scale-95 ${
+                isMuted ? 'bg-red-600 text-white shadow-lg' : 'bg-gray-700 text-white hover:bg-gray-600'
+              }`}
             >
               {isMuted ? <MicOff size={24} /> : <Mic size={24} />}
-              <span className="text-xs font-medium">{isMuted ? 'Aç' : 'Kapat'}</span>
+              <span className="text-xs font-semibold">{isMuted ? 'Mikrofon Aç' : 'Sustur'}</span>
             </button>
             
             <button 
               onClick={toggleDeafen}
-              className={`flex-1 flex flex-col items-center gap-1 p-3 rounded-xl transition ${isDeafened ? 'bg-white text-red-600' : 'bg-gray-700 text-white'}`}
+              className={`flex flex-col items-center gap-2 p-4 rounded-xl transition-all active:scale-95 ${
+                isDeafened ? 'bg-red-600 text-white shadow-lg' : 'bg-gray-700 text-white hover:bg-gray-600'
+              }`}
             >
               {isDeafened ? <VolumeX size={24} /> : <Volume2 size={24} />}
-              <span className="text-xs font-medium">{isDeafened ? 'Duyma' : 'Duy'}</span>
+              <span className="text-xs font-semibold">{isDeafened ? 'Duy' : 'Duyma'}</span>
             </button>
             
             <button 
               onClick={leaveVoiceCall}
-              className="flex-1 flex flex-col items-center gap-1 p-3 rounded-xl bg-red-600 text-white hover:bg-red-700 transition"
+              className="flex flex-col items-center gap-2 p-4 rounded-xl bg-red-600 text-white hover:bg-red-700 transition-all active:scale-95 shadow-lg"
             >
               <PhoneOff size={24} />
-              <span className="text-xs font-medium">Ayrıl</span>
+              <span className="text-xs font-semibold">Ayrıl</span>
             </button>
            </div>
         </div>
@@ -216,7 +236,6 @@ function MobileVoiceBar({ isOpen, activeChannel, voiceUsers, isMuted, isDeafened
 // --- Main Component ---
 
 function ChatView({ user, channels, onLogout, onProfileUpdate }) {
-  // 🎯 FIX 1: İlk kanal seçimini düzelt - dependency loop'u kaldır
   const [activeChannel, setActiveChannel] = useState(() => {
     return channels && channels.length > 0 ? channels[0] : null;
   });
@@ -233,23 +252,25 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
   const [voiceUsers, setVoiceUsers] = useState([]);
   const [speakingUsers, setSpeakingUsers] = useState(new Set());
   
-  // Cache & Refs
+  // UI State
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  
+  // Refs
   const messagesEndRef = useRef(null);
   const rtcClientRef = useRef(null);
   const audioTrackRef = useRef(null);
   const messagePollingRef = useRef(null);
   const userCacheRef = useRef({});
-  const lastMessageCountRef = useRef(0); // 🎯 OPTIMIZATION: Prevent unnecessary updates
+  const lastMessageCountRef = useRef(0);
 
-  // 🎯 FIX 2: Channels güncellendiğinde sadece gerekirse activeChannel'ı güncelle
+  // Channels update
   useEffect(() => {
     if (channels && channels.length > 0 && !activeChannel) {
       setActiveChannel(channels[0]);
     }
-  }, [channels]); // activeChannel'ı dependency'den çıkar
+  }, [channels]);
 
-  // 🎯 FIX 3: Message Loading & Polling (Optimized)
+  // Message Loading & Polling
   useEffect(() => {
     if (!activeChannel) return;
     
@@ -293,7 +314,6 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
     } catch (e) { /* ignore */ }
   }, []);
 
-  // 🎯 OPTIMIZATION: Smart polling - only update if message count changed
   const startMessagePolling = useCallback((channelId) => {
     stopMessagePolling();
     messagePollingRef.current = setInterval(async () => {
@@ -306,7 +326,7 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
       } catch (error) {
         console.error('Polling error:', error);
       }
-    }, 5000); // 5 saniye - daha az yük
+    }, 5000);
   }, []);
 
   const stopMessagePolling = useCallback(() => {
@@ -360,7 +380,21 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
     }
   }, [messageInput, activeChannel, user]);
 
-  // 🔥 FIX 4: Voice Call - channelUsers'ı kullan
+  // 🔥 CRITICAL FIX: Fetch username from backend when unknown
+  const fetchUsernameByUid = useCallback(async (uid) => {
+    try {
+      const response = await API.getUsernameByUid(uid);
+      if (response && response.username) {
+        userCacheRef.current[uid] = response.username;
+        return response.username;
+      }
+    } catch (error) {
+      console.error('Failed to fetch username for UID:', uid, error);
+    }
+    return `Misafir ${String(uid).slice(-4)}`;
+  }, []);
+
+  // 🔥 FIXED: Voice Call with realtime username lookup
   const joinVoiceCall = useCallback(async () => {
     if (connectionState === 'CONNECTING' || connectionState === 'CONNECTED') return;
     
@@ -368,18 +402,17 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
       setConnectionState('CONNECTING');
       const channelName = `voice-${activeChannel.name}`;
       
-      // Token al
       const tokenData = await API.getAgoraRtcToken(channelName);
       
-      // 🎯 Backend'den gelen kullanıcı listesini cache'e ekle
-      if (tokenData.channelUsers) {
+      // 🎯 Cache ALL users from backend
+      if (tokenData.channelUsers && tokenData.channelUsers.length > 0) {
+        console.log('📥 Caching channel users:', tokenData.channelUsers);
         tokenData.channelUsers.forEach(u => {
           userCacheRef.current[u.uid] = u.username;
+          console.log(`✅ Cached: UID ${u.uid} → ${u.username}`);
         });
-        console.log('👥 Cached users:', tokenData.channelUsers.length);
       }
       
-      // Client oluştur
       if (!rtcClientRef.current) {
         rtcClientRef.current = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
       }
@@ -388,36 +421,52 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
       client.removeAllListeners();
 
       // Event Listeners
-      client.on('user-published', async (user, mediaType) => {
-        console.log('User published:', user.uid, mediaType);
+      client.on('user-published', async (remoteUser, mediaType) => {
+        console.log('🎤 User published:', remoteUser.uid, mediaType);
         try {
-          await client.subscribe(user, mediaType);
-          console.log('Subscribed to user:', user.uid);
+          await client.subscribe(remoteUser, mediaType);
+          console.log('✅ Subscribed to user:', remoteUser.uid);
           
           if (mediaType === 'audio') {
-            user.audioTrack.play();
-            updateVoiceUser(user.uid, { isMuted: false });
+            remoteUser.audioTrack.play();
+            
+            // 🔥 FIX: Try to get username, fetch from backend if not cached
+            let username = userCacheRef.current[remoteUser.uid];
+            if (!username) {
+              console.log('⚠️ Username not cached for UID:', remoteUser.uid, '- fetching from backend...');
+              username = await fetchUsernameByUid(remoteUser.uid);
+            }
+            
+            updateVoiceUser(remoteUser.uid, { isMuted: false, username });
           }
         } catch (error) {
           console.error('Subscribe error:', error);
         }
       });
 
-      client.on('user-unpublished', (user, mediaType) => {
-        console.log('User unpublished:', user.uid, mediaType);
+      client.on('user-unpublished', (remoteUser, mediaType) => {
+        console.log('🔇 User unpublished:', remoteUser.uid, mediaType);
         if (mediaType === 'audio') {
-          updateVoiceUser(user.uid, { isMuted: true });
+          updateVoiceUser(remoteUser.uid, { isMuted: true });
         }
       });
 
-      client.on('user-joined', (user) => {
-        console.log('User joined:', user.uid);
-        updateVoiceUser(user.uid, { isMuted: true });
+      client.on('user-joined', async (remoteUser) => {
+        console.log('👋 User joined:', remoteUser.uid);
+        
+        // 🔥 FIX: Immediately fetch username from backend
+        let username = userCacheRef.current[remoteUser.uid];
+        if (!username) {
+          console.log('⚠️ Username not cached for joined user:', remoteUser.uid, '- fetching...');
+          username = await fetchUsernameByUid(remoteUser.uid);
+        }
+        
+        updateVoiceUser(remoteUser.uid, { isMuted: true, username });
       });
 
-      client.on('user-left', (user) => {
-        console.log('User left:', user.uid);
-        removeVoiceUser(user.uid);
+      client.on('user-left', (remoteUser) => {
+        console.log('👋 User left:', remoteUser.uid);
+        removeVoiceUser(remoteUser.uid);
       });
 
       client.on('volume-indicator', (volumes) => {
@@ -436,11 +485,11 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
         }
       });
 
-      // Kanala katıl
+      // Join channel
       const uid = await client.join(tokenData.appId, channelName, tokenData.token, tokenData.uid);
-      console.log('Joined channel with UID:', uid);
+      console.log('✅ Joined channel with UID:', uid);
 
-      // Audio track oluştur ve yayınla
+      // Create and publish audio track
       audioTrackRef.current = await AgoraRTC.createMicrophoneAudioTrack({
         encoderConfig: 'speech_standard',
         AEC: true, 
@@ -451,7 +500,7 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
       await client.publish([audioTrackRef.current]);
       client.enableAudioVolumeIndicator();
 
-      // Kendini listeye ekle
+      // Add self to list
       const myUsername = tokenData.username || user.displayName || user.email.split('@')[0];
       userCacheRef.current[uid] = myUsername;
       
@@ -462,19 +511,31 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
         isLocal: true
       });
 
-      // 🎯 Mevcut kullanıcıları yükle
+      // 🔥 Process existing remote users
       await new Promise(resolve => setTimeout(resolve, 500));
       
+      console.log('👥 Processing existing remote users:', client.remoteUsers.length);
       for (const remoteUser of client.remoteUsers) {
-        console.log('Processing existing remote user:', remoteUser.uid);
-        updateVoiceUser(remoteUser.uid, { isMuted: !remoteUser.hasAudio });
+        console.log('Processing:', remoteUser.uid);
+        
+        // Try to get username
+        let username = userCacheRef.current[remoteUser.uid];
+        if (!username) {
+          console.log('⚠️ Fetching username for existing user:', remoteUser.uid);
+          username = await fetchUsernameByUid(remoteUser.uid);
+        }
+        
+        updateVoiceUser(remoteUser.uid, { 
+          isMuted: !remoteUser.hasAudio,
+          username 
+        });
         
         if (remoteUser.hasAudio && remoteUser.audioTrack) {
           try {
             await client.subscribe(remoteUser, 'audio');
             remoteUser.audioTrack.play();
-            console.log('Subscribed to existing user audio:', remoteUser.uid);
-            updateVoiceUser(remoteUser.uid, { isMuted: false });
+            console.log('✅ Subscribed to existing user:', remoteUser.uid);
+            updateVoiceUser(remoteUser.uid, { isMuted: false, username });
           } catch (error) {
             console.error('Error subscribing to existing user:', remoteUser.uid, error);
           }
@@ -483,7 +544,7 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
 
       setInVoiceCall(true);
       setConnectionState('CONNECTED');
-      console.log('Voice call setup complete');
+      console.log('🎉 Voice call setup complete. Total users:', client.remoteUsers.length + 1);
 
     } catch (error) {
       console.error('Ses bağlantı hatası:', error);
@@ -491,7 +552,7 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
       setConnectionState('DISCONNECTED');
       leaveVoiceCall();
     }
-  }, [connectionState, activeChannel, user, inVoiceCall]);
+  }, [connectionState, activeChannel, user, inVoiceCall, fetchUsernameByUid]);
 
   const leaveVoiceCall = useCallback(async () => {
     try {
@@ -521,9 +582,12 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
     setVoiceUsers(prev => {
       const existing = prev.find(u => u.uid === uid);
       
-      let username = existing?.username;
+      // Use provided username or cached username
+      let username = data.username || existing?.username || userCacheRef.current[uid];
+      
       if (!username) {
-         username = userCacheRef.current[uid] || `Misafir ${String(uid).slice(-4)}`;
+        username = `Misafir ${String(uid).slice(-4)}`;
+        console.warn('⚠️ No username found for UID:', uid, '- using fallback');
       }
 
       if (existing) {
@@ -594,11 +658,11 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
         transform transition-transform duration-300 ease-in-out shadow-2xl
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
-        <div className="h-16 flex items-center justify-between px-6 border-b border-gray-700 bg-gray-800">
+        <div className="h-16 flex items-center justify-between px-6 border-b border-gray-700 bg-gray-800 flex-shrink-0">
           <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
             Destek Topluluğu
           </h1>
-          <button onClick={() => setSidebarOpen(false)} className="lg:hidden text-gray-400 hover:text-white">
+          <button onClick={() => setSidebarOpen(false)} className="lg:hidden text-gray-400 hover:text-white p-2">
             <X size={24} />
           </button>
         </div>
@@ -625,7 +689,7 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
                     >
                       <Hash size={18} className={`mr-2.5 flex-shrink-0 ${isActive ? 'text-indigo-400' : 'text-gray-500 group-hover:text-gray-400'}`} />
                       <span className={`text-sm font-medium truncate ${isActive ? 'text-indigo-100' : ''}`}>{channel.name}</span>
-                      {isActive && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.5)]"></div>}
+                      {isActive && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.5)] flex-shrink-0"></div>}
                     </button>
                   )
                 })}
@@ -635,7 +699,7 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
         </div>
 
         {inVoiceCall && (
-          <div className="hidden lg:block bg-gray-900/50 border-t border-gray-700 backdrop-blur-md">
+          <div className="hidden lg:block bg-gray-900/50 border-t border-gray-700 backdrop-blur-md flex-shrink-0">
             <div className="p-3 border-b border-gray-700/50 flex items-center justify-between">
               <div className="flex items-center gap-2 text-green-400">
                  <Signal size={16} className="animate-pulse"/>
@@ -670,7 +734,7 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
           </div>
         )}
 
-        <div className="bg-gray-850 p-4 border-t border-gray-700">
+        <div className="bg-gray-850 p-4 border-t border-gray-700 flex-shrink-0">
           <div className="flex items-center gap-3">
             <div className="relative group cursor-pointer" onClick={() => setShowProfile(true)}>
                <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold shadow-lg group-hover:ring-2 ring-indigo-400 transition">
@@ -697,13 +761,14 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
       {/* MAIN CHAT AREA */}
       <div className="flex-1 flex flex-col min-w-0 bg-gray-900 relative">
         
-        <div className="h-16 border-b border-gray-700 flex items-center justify-between px-4 sm:px-6 bg-gray-800 shadow-sm z-10">
-          <div className="flex items-center min-w-0">
-            <button onClick={() => setSidebarOpen(true)} className="lg:hidden mr-4 text-gray-400 hover:text-white">
+        {/* Header - Fixed height */}
+        <div className="h-16 border-b border-gray-700 flex items-center justify-between px-4 sm:px-6 bg-gray-800 shadow-sm z-10 flex-shrink-0">
+          <div className="flex items-center min-w-0 flex-1">
+            <button onClick={() => setSidebarOpen(true)} className="lg:hidden mr-3 text-gray-400 hover:text-white p-2">
               <Menu size={24} />
             </button>
             <Hash size={24} className="text-gray-500 mr-3 flex-shrink-0" />
-            <div>
+            <div className="min-w-0 flex-1">
               <h2 className="text-white font-bold text-base sm:text-lg truncate leading-tight">
                 {activeChannel?.name || 'Kanal Yükleniyor...'}
               </h2>
@@ -717,22 +782,32 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
              <button
                onClick={joinVoiceCall}
                disabled={connectionState === 'CONNECTING'}
-               className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition shadow-lg hover:shadow-green-500/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+               className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition shadow-lg hover:shadow-green-500/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
              >
                <Mic size={18} />
-               <span className="hidden sm:inline font-medium">
+               <span className="hidden sm:inline font-medium text-sm">
                  {connectionState === 'CONNECTING' ? 'Bağlanıyor...' : 'Sesli Sohbet'}
                </span>
              </button>
           ) : (
-            <div className="hidden lg:flex items-center gap-2 px-4 py-2 bg-green-900/30 border border-green-500/30 text-green-400 rounded-lg">
+            <div className="hidden lg:flex items-center gap-2 px-3 py-2 bg-green-900/30 border border-green-500/30 text-green-400 rounded-lg flex-shrink-0">
                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                <span className="font-medium text-sm">Bağlı ({voiceUsers.length})</span>
             </div>
           )}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 custom-scrollbar scroll-smooth">
+        {/* 🔥 MOBILE OPTIMIZED Messages - Dynamic height */}
+        <div 
+          className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 custom-scrollbar scroll-smooth"
+          style={{
+            // Dynamic height calculation
+            height: inVoiceCall 
+              ? 'calc(100vh - 4rem - 5rem - 4rem)' // header - input - voice bar (collapsed)
+              : 'calc(100vh - 4rem - 5rem)', // header - input
+            willChange: 'scroll-position',
+          }}
+        >
           {messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center opacity-50">
                <div className="w-16 h-16 bg-gray-800 rounded-2xl flex items-center justify-center mb-4">
@@ -755,19 +830,19 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
                );
 
                return (
-                <div key={msg._id || i} className={`flex gap-4 group ${isSameUser ? 'mt-1' : 'mt-6'}`}>
+                <div key={msg._id || i} className={`flex gap-3 sm:gap-4 group ${isSameUser ? 'mt-1' : 'mt-4 sm:mt-6'}`}>
                   {!isSameUser ? (
-                    <div className="w-10 h-10 rounded-full bg-indigo-600 flex-shrink-0 flex items-center justify-center text-white font-bold text-sm shadow-sm mt-0.5">
+                    <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-indigo-600 flex-shrink-0 flex items-center justify-center text-white font-bold text-xs sm:text-sm shadow-sm mt-0.5">
                       {msg.username?.[0]?.toUpperCase() || '?'}
                     </div>
                   ) : (
-                    <div className="w-10 flex-shrink-0" />
+                    <div className="w-8 sm:w-10 flex-shrink-0" />
                   )}
                   
                   <div className="flex-1 min-w-0">
                     {!isSameUser && (
                       <div className="flex items-baseline gap-2 mb-1">
-                        <span className="text-white font-bold hover:underline cursor-pointer">
+                        <span className="text-white font-bold text-sm hover:underline cursor-pointer">
                           {msg.isAnonymous ? 'Anonim' : msg.username}
                         </span>
                         <span className="text-xs text-gray-500">
@@ -775,7 +850,7 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
                         </span>
                       </div>
                     )}
-                    <p className={`text-gray-300 leading-relaxed break-words ${!isSameUser ? '' : 'text-gray-300/90'}`}>
+                    <p className={`text-gray-300 leading-relaxed break-words text-sm sm:text-base ${!isSameUser ? '' : 'text-gray-300/90'}`}>
                       {msg.text}
                     </p>
                   </div>
@@ -786,6 +861,7 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
           <div ref={messagesEndRef} className="h-4" />
         </div>
 
+        {/* Mobile Voice Bar */}
         {inVoiceCall && (
           <MobileVoiceBar 
             isOpen={true}
@@ -799,7 +875,15 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
           />
         )}
 
-        <div className={`p-4 bg-gray-800 border-t border-gray-700 ${inVoiceCall ? 'lg:pb-4 pb-20' : ''}`}>
+        {/* 🔥 MOBILE OPTIMIZED Input - Fixed position with safe area */}
+        <div 
+          className="p-3 sm:p-4 bg-gray-800 border-t border-gray-700 flex-shrink-0"
+          style={{
+            paddingBottom: inVoiceCall 
+              ? 'calc(env(safe-area-inset-bottom) + 0.75rem)'  // Extra padding when voice bar present
+              : 'calc(env(safe-area-inset-bottom) + 0.75rem)',
+          }}
+        >
           <div className="relative flex items-center bg-gray-700/50 rounded-xl border border-gray-600/50 focus-within:border-indigo-500/50 focus-within:ring-1 focus-within:ring-indigo-500/50 transition shadow-inner">
              <input
                type="text"
@@ -807,16 +891,16 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
                onChange={(e) => setMessageInput(e.target.value)}
                onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
                placeholder={`#${activeChannel?.name || 'kanal'} kanalına mesaj gönder`}
-               className="flex-1 bg-transparent text-white px-4 py-3.5 outline-none placeholder-gray-500"
+               className="flex-1 bg-transparent text-white px-3 sm:px-4 py-3 sm:py-3.5 outline-none placeholder-gray-500 text-sm sm:text-base"
                disabled={!activeChannel}
              />
              <div className="pr-2">
                <button
                  onClick={handleSendMessage}
                  disabled={!messageInput.trim()}
-                 className="p-2 bg-indigo-600 rounded-lg text-white hover:bg-indigo-700 disabled:opacity-50 disabled:bg-gray-600 disabled:cursor-not-allowed transition shadow-lg"
+                 className="p-2 sm:p-2.5 bg-indigo-600 rounded-lg text-white hover:bg-indigo-700 disabled:opacity-50 disabled:bg-gray-600 disabled:cursor-not-allowed transition shadow-lg active:scale-95"
                >
-                 <Send size={18} />
+                 <Send size={16} className="sm:w-[18px] sm:h-[18px]" />
                </button>
              </div>
           </div>

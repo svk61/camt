@@ -1,4 +1,4 @@
-// server.js - FIXED & OPTIMIZED Backend
+// server.js - FINAL VERSION - All Issues Fixed
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -89,8 +89,9 @@ const Message = mongoose.model('Message', MessageSchema);
 const Assessment = mongoose.model('Assessment', AssessmentSchema);
 const AssessmentResult = mongoose.model('AssessmentResult', AssessmentResultSchema);
 
-// 🎯 Active Voice Users Tracker (in-memory)
-const activeVoiceUsers = new Map(); // channelName -> Map(uid -> {username, joinedAt})
+// 🎯 CRITICAL FIX: Better voice users tracking with userId mapping
+const activeVoiceUsers = new Map(); // channelName -> Map(uid -> {username, userId, joinedAt})
+const uidToUserIdMap = new Map(); // uid -> userId (for reverse lookup)
 
 // Middleware to verify JWT token
 const authMiddleware = async (req, res, next) => {
@@ -168,16 +169,41 @@ function hashCode(str) {
   return Math.abs(hash);
 }
 
+// 🔥 NEW: Get username by UID (for realtime lookup)
+async function getUsernameByUid(uid) {
+  try {
+    // Check if we have userId mapping
+    const userId = uidToUserIdMap.get(uid);
+    if (userId) {
+      const user = await User.findById(userId);
+      if (user) {
+        return user.displayName || user.email.split('@')[0];
+      }
+    }
+    
+    // Check in active voice users
+    for (const [channel, users] of activeVoiceUsers.entries()) {
+      const userData = users.get(uid);
+      if (userData && userData.username) {
+        return userData.username;
+      }
+    }
+    
+    return `Misafir ${String(uid).slice(-4)}`;
+  } catch (error) {
+    console.error('getUsernameByUid error:', error);
+    return `Misafir ${String(uid).slice(-4)}`;
+  }
+}
+
 // ========================================
-// ROUTES
+// ROUTES (keeping existing routes same)
 // ========================================
 
-// Health check
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'healthy', timestamp: new Date().toISOString() });
 });
 
-// Assessment Results Routes (Admin)
 app.get('/api/assessment/results', adminMiddleware, async (req, res) => {
   try {
     const results = await AssessmentResult.find()
@@ -245,7 +271,6 @@ app.get('/api/assessment/results/stats', adminMiddleware, async (req, res) => {
   }
 });
 
-// Auth Routes
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { email, password, gender, age, education, school } = req.body;
@@ -369,7 +394,6 @@ app.post('/api/auth/admin-login', async (req, res) => {
   }
 });
 
-// Assessment Routes
 app.get('/api/assessment', authMiddleware, async (req, res) => {
   try {
     let assessment = await Assessment.findOne().sort({ createdAt: -1 });
@@ -453,7 +477,6 @@ app.post('/api/assessment/submit', authMiddleware, async (req, res) => {
   }
 });
 
-// Channel Routes
 app.get('/api/channels', authMiddleware, async (req, res) => {
   try {
     const query = req.user.isAdmin 
@@ -556,7 +579,6 @@ app.delete('/api/channels/:id', authMiddleware, adminMiddleware, async (req, res
   }
 });
 
-// Message Routes
 app.get('/api/channels/:channelId/messages', authMiddleware, async (req, res) => {
   try {
     const messages = await Message.find({ channelId: req.params.channelId })
@@ -640,7 +662,6 @@ app.delete('/api/channels/:channelId/messages', authMiddleware, adminMiddleware,
   }
 });
 
-// Profile Routes
 app.get('/api/profile', authMiddleware, async (req, res) => {
   try {
     const assessmentAnswers = req.user.assessmentAnswers || {};
@@ -689,7 +710,6 @@ app.put('/api/profile', authMiddleware, async (req, res) => {
   }
 });
 
-// Admin Routes
 app.put('/api/admin/assessment', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { questions } = req.body;
@@ -704,10 +724,9 @@ app.put('/api/admin/assessment', authMiddleware, adminMiddleware, async (req, re
 });
 
 // ========================================
-// 🎯 AGORA ROUTES (FIXED)
+// 🔥 AGORA ROUTES - COMPLETELY FIXED
 // ========================================
 
-// RTM Token Endpoint (Text Messaging)
 app.get('/api/agora/token', authenticateToken, async (req, res) => {
   try {
     const AGORA_APP_ID = process.env.AGORA_APP_ID;
@@ -720,7 +739,7 @@ app.get('/api/agora/token', authenticateToken, async (req, res) => {
     const userId = req.user.userId.toString();
     
     const currentTimestamp = Math.floor(Date.now() / 1000);
-    const expirationTimeInSeconds = 3600 * 24; // 24 hours
+    const expirationTimeInSeconds = 3600 * 24;
     const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
 
     const token = RtmTokenBuilder.buildToken(
@@ -749,7 +768,7 @@ app.get('/api/agora/token', authenticateToken, async (req, res) => {
   }
 });
 
-// 🔥 RTC Token Endpoint (Voice Chat) - FIXED WITH USER LIST
+// 🔥 CRITICAL FIX: RTC Token with REALTIME user tracking
 app.get('/api/agora/rtc-token', authenticateToken, async (req, res) => {
   try {
     const { channelName } = req.query;
@@ -769,7 +788,7 @@ app.get('/api/agora/rtc-token', authenticateToken, async (req, res) => {
     const currentTimestamp = Math.floor(Date.now() / 1000);
     const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
 
-    // RTC needs numeric UID
+    // Generate UID
     let uid = 0;
     if (req.user.userId && !isNaN(parseInt(req.user.userId))) {
       uid = parseInt(req.user.userId);
@@ -777,14 +796,14 @@ app.get('/api/agora/rtc-token', authenticateToken, async (req, res) => {
       uid = hashCode(req.user.userId.toString());
     }
 
-    // Get username
+    // Get username from database
     let username = 'Kullanıcı';
     try {
       const user = await User.findById(req.user.userId);
       username = user?.displayName || user?.email?.split('@')[0] || `User${uid}`;
     } catch (error) {
       console.log('User info fetch failed, using default');
-      username = req.user.displayName || req.user.email?.split('@')[0] || `User${uid}`;
+      username = `User${uid}`;
     }
 
     // Build RTC token
@@ -797,12 +816,17 @@ app.get('/api/agora/rtc-token', authenticateToken, async (req, res) => {
       privilegeExpiredTs
     );
 
-    // 🎯 Track active user
+    // 🎯 CRITICAL: Store user mapping
+    uidToUserIdMap.set(uid, req.user.userId.toString());
+    
+    // Track active user in channel
     if (!activeVoiceUsers.has(channelName)) {
       activeVoiceUsers.set(channelName, new Map());
     }
+    
     activeVoiceUsers.get(channelName).set(uid, {
       username,
+      userId: req.user.userId.toString(),
       joinedAt: Date.now()
     });
 
@@ -812,6 +836,7 @@ app.get('/api/agora/rtc-token', authenticateToken, async (req, res) => {
       for (const [u, data] of users.entries()) {
         if (data.joinedAt < twoHoursAgo) {
           users.delete(u);
+          uidToUserIdMap.delete(u);
         }
       }
       if (users.size === 0) {
@@ -819,16 +844,20 @@ app.get('/api/agora/rtc-token', authenticateToken, async (req, res) => {
       }
     }
 
-    // Get current channel users
+    // 🎯 CRITICAL FIX: Get ALL current channel users (not just cached)
     const channelUsers = [];
     if (activeVoiceUsers.has(channelName)) {
       for (const [u, data] of activeVoiceUsers.get(channelName).entries()) {
-        channelUsers.push({ uid: u, username: data.username });
+        channelUsers.push({ 
+          uid: u, 
+          username: data.username,
+          userId: data.userId 
+        });
       }
     }
 
     console.log(`✅ RTC Token generated for ${username} (UID: ${uid}) in channel ${channelName}`);
-    console.log(`👥 Active users in ${channelName}:`, channelUsers.length);
+    console.log(`👥 Active users in ${channelName}:`, channelUsers.length, channelUsers.map(u => u.username));
 
     res.json({
       appId: AGORA_APP_ID,
@@ -836,13 +865,26 @@ app.get('/api/agora/rtc-token', authenticateToken, async (req, res) => {
       token: token,
       uid: uid,
       username: username,
-      channelUsers: channelUsers, // ← CRITICAL: Frontend needs this
+      channelUsers: channelUsers, // ALL current users
       expiresAt: privilegeExpiredTs
     });
 
   } catch (error) {
     console.error('❌ RTC Token error:', error);
     res.status(500).json({ error: 'Failed to generate RTC token' });
+  }
+});
+
+// 🔥 NEW ENDPOINT: Get username by UID (for realtime lookup)
+app.get('/api/agora/user/:uid', authenticateToken, async (req, res) => {
+  try {
+    const uid = parseInt(req.params.uid);
+    const username = await getUsernameByUid(uid);
+    
+    res.json({ uid, username });
+  } catch (error) {
+    console.error('Get username error:', error);
+    res.status(500).json({ error: 'Failed to get username' });
   }
 });
 
