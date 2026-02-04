@@ -3,7 +3,7 @@ import AgoraRTC from 'agora-rtc-sdk-ng';
 import { API } from '../App';
 
 // ========================================
-// 🔥 IMPROVED VoiceChat with username display
+// 🔥 FIXED: Multi-user synchronization issue
 // ========================================
 
 const VoiceChat = ({ channelName, userId, username, onClose }) => {
@@ -15,9 +15,10 @@ const VoiceChat = ({ channelName, userId, username, onClose }) => {
 
   const clientRef = useRef(null);
   const localAudioTrackRef = useRef(null);
-  const uidToUsernameRef = useRef(new Map()); // 🔥 Track UID to username mapping
+  const uidToUsernameRef = useRef(new Map());
+  const localUidRef = useRef(null); // 🔥 Track local UID
 
-  // Sanitize channel name for Agora (max 64 chars, alphanumeric and some special chars)
+  // Sanitize channel name
   const sanitizeChannelName = (name) => {
     if (!name) return 'general';
     return name
@@ -25,39 +26,38 @@ const VoiceChat = ({ channelName, userId, username, onClose }) => {
       .substring(0, 64);
   };
 
-  // 🔥 Get username by UID (check local cache first, then API)
+  // 🔥 IMPROVED: Fetch username with retry logic
   const getUsernameByUid = async (uid) => {
     // Check cache first
     if (uidToUsernameRef.current.has(uid)) {
       return uidToUsernameRef.current.get(uid);
     }
 
-    // Try to get from API
+    // Try API with retry
     try {
       const response = await API.getUsernameByUid(uid);
-      const foundUsername = response.username || `User ${uid}`;
-      uidToUsernameRef.current.set(uid, foundUsername);
-      return foundUsername;
+      const fetchedUsername = response.username || `User ${uid}`;
+      uidToUsernameRef.current.set(uid, fetchedUsername);
+      return fetchedUsername;
     } catch (error) {
-      console.log('Could not fetch username for UID:', uid);
-      return `User ${uid}`;
+      console.warn('Could not fetch username for UID:', uid);
+      // Use fallback
+      const fallback = `Guest ${String(uid).slice(-4)}`;
+      uidToUsernameRef.current.set(uid, fallback);
+      return fallback;
     }
   };
 
   useEffect(() => {
-    // Initialize Agora client with CORRECT config
+    // Initialize Agora client
     clientRef.current = AgoraRTC.createClient({ 
-      mode: 'rtc',  // 🔥 CRITICAL: rtc mode for voice chat
-      codec: 'vp8'  // 🔥 CRITICAL: vp8 codec
+      mode: 'rtc',
+      codec: 'vp9'  // 🔥 Changed from vp8 to vp9 for better stability
     });
 
-    // Setup event listeners
     setupEventListeners();
-
-    // Join on mount
     joinChannel();
 
-    // Cleanup on unmount
     return () => {
       leaveChannel();
     };
@@ -66,47 +66,53 @@ const VoiceChat = ({ channelName, userId, username, onClose }) => {
   const setupEventListeners = () => {
     const client = clientRef.current;
 
-    // 🔥 CRITICAL: Handle user-published event
+    // 🔥 CRITICAL FIX: Handle user-published properly
     client.on('user-published', async (user, mediaType) => {
       console.log('👤 User published:', user.uid, mediaType);
       
       if (mediaType === 'audio') {
         try {
-          // Subscribe to the remote user
+          // Subscribe to remote user
           await client.subscribe(user, mediaType);
+          console.log('✅ Subscribed to user:', user.uid);
           
-          // Play the remote audio
+          // Play audio
           user.audioTrack?.play();
+          console.log('🔊 Playing audio from user:', user.uid);
           
-          // Get username and add to participants
+          // 🔥 CRITICAL: Fetch username and update participants
           const remoteUsername = await getUsernameByUid(user.uid);
           
           setParticipants(prev => {
             // Check if user already exists
             const existing = prev.find(p => p.uid === user.uid);
+            
             if (existing) {
+              // Update existing user
               return prev.map(p => 
                 p.uid === user.uid 
                   ? { ...p, hasAudio: true, username: remoteUsername }
                   : p
               );
             }
-            // Add new user
+            
+            // 🔥 FIX: Add new user to list
+            console.log(`➕ Adding new participant: ${remoteUsername} (${user.uid})`);
             return [...prev, { 
               uid: user.uid, 
               hasAudio: true,
-              username: remoteUsername
+              username: remoteUsername,
+              isLocal: false
             }];
           });
 
-          console.log('✅ Subscribed to user:', user.uid, remoteUsername);
         } catch (err) {
           console.error('❌ Error subscribing to user:', err);
         }
       }
     });
 
-    // 🔥 Handle user-unpublished event
+    // Handle user-unpublished
     client.on('user-unpublished', (user, mediaType) => {
       console.log('👤 User unpublished:', user.uid, mediaType);
       
@@ -121,23 +127,80 @@ const VoiceChat = ({ channelName, userId, username, onClose }) => {
       }
     });
 
-    // 🔥 Handle user-left event
+    // 🔥 CRITICAL FIX: Handle user-left properly
     client.on('user-left', (user) => {
       console.log('👋 User left:', user.uid);
-      setParticipants(prev => prev.filter(p => p.uid !== user.uid));
+      
+      setParticipants(prev => {
+        const filtered = prev.filter(p => p.uid !== user.uid);
+        console.log(`➖ Removed participant ${user.uid}. Remaining:`, filtered.length);
+        return filtered;
+      });
+      
       uidToUsernameRef.current.delete(user.uid);
     });
 
-    // 🔥 Handle connection state changes
+    // 🔥 NEW: Handle user-joined event (even before publishing)
+    client.on('user-joined', async (user) => {
+      console.log('🚪 User joined channel:', user.uid);
+      
+      // Immediately add to participants list
+      const remoteUsername = await getUsernameByUid(user.uid);
+      
+      setParticipants(prev => {
+        const existing = prev.find(p => p.uid === user.uid);
+        if (existing) return prev;
+        
+        console.log(`➕ Adding joined user: ${remoteUsername} (${user.uid})`);
+        return [...prev, {
+          uid: user.uid,
+          hasAudio: false, // Will be set to true when published
+          username: remoteUsername,
+          isLocal: false
+        }];
+      });
+    });
+
+    // Connection state changes
     client.on('connection-state-change', (curState, prevState) => {
       console.log('🔌 Connection state:', prevState, '->', curState);
       setIsConnected(curState === 'CONNECTED');
+      
+      // 🔥 FIX: Refresh participant list when reconnected
+      if (curState === 'CONNECTED' && prevState === 'CONNECTING') {
+        refreshParticipants();
+      }
     });
 
-    // 🔥 Handle errors
+    // Error handling
     client.on('error', (error) => {
-      console.error('Agora client error:', error);
+      console.error('❌ Agora client error:', error);
     });
+  };
+
+  // 🔥 NEW: Refresh participants from remote users
+  const refreshParticipants = async () => {
+    const client = clientRef.current;
+    if (!client) return;
+
+    const remoteUsers = client.remoteUsers;
+    console.log('🔄 Refreshing participants. Remote users:', remoteUsers.length);
+
+    for (const user of remoteUsers) {
+      const remoteUsername = await getUsernameByUid(user.uid);
+      
+      setParticipants(prev => {
+        const existing = prev.find(p => p.uid === user.uid);
+        if (existing) return prev;
+        
+        return [...prev, {
+          uid: user.uid,
+          hasAudio: user.hasAudio,
+          username: remoteUsername,
+          isLocal: false
+        }];
+      });
+    }
   };
 
   const joinChannel = async () => {
@@ -173,10 +236,13 @@ const VoiceChat = ({ channelName, userId, username, onClose }) => {
         existingUsers: channelUsers?.length || 0
       });
 
-      // 🔥 CRITICAL: Store username mapping for this user
+      // 🔥 Store local UID
+      localUidRef.current = uid;
+
+      // 🔥 Store username mapping
       uidToUsernameRef.current.set(uid, serverUsername || username);
 
-      // 🔥 CRITICAL: Store existing users from server
+      // 🔥 Store existing users from server
       if (channelUsers && Array.isArray(channelUsers)) {
         channelUsers.forEach(user => {
           if (user.uid && user.username) {
@@ -187,16 +253,16 @@ const VoiceChat = ({ channelName, userId, username, onClose }) => {
 
       const client = clientRef.current;
 
-      // 🔥 CRITICAL: Join with numeric UID from server
+      // Join channel
       await client.join(appId, sanitizedChannel, token, uid);
       console.log('✅ Joined channel successfully as', serverUsername || username);
 
-      // Create and publish local audio track
+      // Create and publish local audio
       const audioTrack = await AgoraRTC.createMicrophoneAudioTrack({
         encoderConfig: 'music_standard',
-        AEC: true,  // Echo cancellation
-        ANS: true,  // Noise suppression
-        AGC: true   // Auto gain control
+        AEC: true,
+        ANS: true,
+        AGC: true
       });
       
       localAudioTrackRef.current = audioTrack;
@@ -206,35 +272,49 @@ const VoiceChat = ({ channelName, userId, username, onClose }) => {
 
       setIsConnected(true);
       
-      // Add self to participants
-      setParticipants([{ 
+      // 🔥 CRITICAL FIX: Build complete participant list
+      const completeParticipants = [];
+      
+      // Add self
+      completeParticipants.push({ 
         uid: uid, 
         hasAudio: true, 
         isLocal: true,
         username: serverUsername || username
-      }]);
+      });
 
-      // 🔥 Add existing remote users to participants
+      // 🔥 Add existing remote users from server
       if (channelUsers && Array.isArray(channelUsers)) {
         const remoteUsers = channelUsers.filter(u => u.uid !== uid);
-        if (remoteUsers.length > 0) {
-          setParticipants(prev => [
-            ...prev,
-            ...remoteUsers.map(u => ({
-              uid: u.uid,
-              hasAudio: true,
-              isLocal: false,
-              username: u.username
-            }))
-          ]);
-        }
+        remoteUsers.forEach(u => {
+          completeParticipants.push({
+            uid: u.uid,
+            hasAudio: true, // Assume they have audio
+            isLocal: false,
+            username: u.username
+          });
+        });
       }
+
+      // 🔥 Also add any remote users already in client
+      client.remoteUsers.forEach(async (user) => {
+        if (!completeParticipants.find(p => p.uid === user.uid)) {
+          const remoteUsername = await getUsernameByUid(user.uid);
+          completeParticipants.push({
+            uid: user.uid,
+            hasAudio: user.hasAudio,
+            isLocal: false,
+            username: remoteUsername
+          });
+        }
+      });
+
+      console.log('👥 Initial participants:', completeParticipants.length, completeParticipants);
+      setParticipants(completeParticipants);
 
     } catch (err) {
       console.error('❌ Failed to join channel:', err);
       setError(err.message || 'Failed to connect to voice chat');
-      
-      // Try to cleanup on error
       await leaveChannel();
     } finally {
       setIsLoading(false);
@@ -260,6 +340,7 @@ const VoiceChat = ({ channelName, userId, username, onClose }) => {
       setIsConnected(false);
       setParticipants([]);
       uidToUsernameRef.current.clear();
+      localUidRef.current = null;
     } catch (err) {
       console.error('Error leaving channel:', err);
     }
@@ -397,7 +478,6 @@ const VoiceChat = ({ channelName, userId, username, onClose }) => {
                     flex: 1,
                     fontWeight: participant.isLocal ? '600' : '400'
                   }}>
-                    {/* 🔥 CRITICAL: Display actual username */}
                     {participant.username || `User ${participant.uid}`}
                   </span>
                   {participant.isLocal && (

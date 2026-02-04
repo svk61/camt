@@ -1,4 +1,4 @@
-// server.js - FINAL VERSION - All Issues Fixed
+// server.js - FIXED VERSION - Multi-user synchronization
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -89,9 +89,33 @@ const Message = mongoose.model('Message', MessageSchema);
 const Assessment = mongoose.model('Assessment', AssessmentSchema);
 const AssessmentResult = mongoose.model('AssessmentResult', AssessmentResultSchema);
 
-// 🎯 CRITICAL FIX: Better voice users tracking with userId mapping
-const activeVoiceUsers = new Map(); // channelName -> Map(uid -> {username, userId, joinedAt})
-const uidToUserIdMap = new Map(); // uid -> userId (for reverse lookup)
+// 🎯 IMPROVED: Voice users tracking with better data structure
+const activeVoiceUsers = new Map(); // channelName -> Map(uid -> userData)
+const uidToUserIdMap = new Map(); // uid -> userId (reverse lookup)
+const userIdToUidMap = new Map(); // userId -> uid (for fast lookups)
+
+// 🔥 NEW: Clean up old users periodically
+setInterval(() => {
+  const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
+  
+  for (const [channelName, users] of activeVoiceUsers.entries()) {
+    for (const [uid, userData] of users.entries()) {
+      if (userData.joinedAt < twoHoursAgo) {
+        users.delete(uid);
+        uidToUserIdMap.delete(uid);
+        if (userData.userId) {
+          userIdToUidMap.delete(userData.userId);
+        }
+        console.log(`🧹 Cleaned up old user ${uid} from ${channelName}`);
+      }
+    }
+    
+    if (users.size === 0) {
+      activeVoiceUsers.delete(channelName);
+      console.log(`🧹 Removed empty channel ${channelName}`);
+    }
+  }
+}, 30 * 60 * 1000); // Run every 30 minutes
 
 // Middleware to verify JWT token
 const authMiddleware = async (req, res, next) => {
@@ -169,35 +193,39 @@ function hashCode(str) {
   return Math.abs(hash);
 }
 
-// 🔥 NEW: Get username by UID (for realtime lookup)
+// 🔥 IMPROVED: Get username by UID with better fallback
 async function getUsernameByUid(uid) {
   try {
-    // Check if we have userId mapping
+    // First check UID to userId mapping
     const userId = uidToUserIdMap.get(uid);
     if (userId) {
       const user = await User.findById(userId);
-      if (user) {
-        return user.displayName || user.email.split('@')[0];
+      if (user && user.displayName) {
+        return user.displayName;
+      }
+      if (user && user.email) {
+        return user.email.split('@')[0];
       }
     }
     
-    // Check in active voice users
-    for (const [channel, users] of activeVoiceUsers.entries()) {
+    // Check in active voice users across all channels
+    for (const [channelName, users] of activeVoiceUsers.entries()) {
       const userData = users.get(uid);
       if (userData && userData.username) {
         return userData.username;
       }
     }
     
-    return `Misafir ${String(uid).slice(-4)}`;
+    // Last resort: generic fallback
+    return `Guest ${String(uid).slice(-4)}`;
   } catch (error) {
     console.error('getUsernameByUid error:', error);
-    return `Misafir ${String(uid).slice(-4)}`;
+    return `Guest ${String(uid).slice(-4)}`;
   }
 }
 
 // ========================================
-// ROUTES (keeping existing routes same)
+// EXISTING ROUTES (kept the same)
 // ========================================
 
 app.get('/health', (req, res) => {
@@ -768,7 +796,7 @@ app.get('/api/agora/token', authenticateToken, async (req, res) => {
   }
 });
 
-// 🔥 CRITICAL FIX: RTC Token with REALTIME user tracking
+// 🔥 CRITICAL FIX: RTC Token with COMPLETE user tracking
 app.get('/api/agora/rtc-token', authenticateToken, async (req, res) => {
   try {
     const { channelName } = req.query;
@@ -788,18 +816,27 @@ app.get('/api/agora/rtc-token', authenticateToken, async (req, res) => {
     const currentTimestamp = Math.floor(Date.now() / 1000);
     const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
 
-    // Generate UID
-    let uid = 0;
-    if (req.user.userId && !isNaN(parseInt(req.user.userId))) {
-      uid = parseInt(req.user.userId);
+    // Generate or retrieve UID
+    const userId = req.user.userId.toString();
+    let uid;
+    
+    // Check if user already has a UID for this channel
+    if (userIdToUidMap.has(userId)) {
+      uid = userIdToUidMap.get(userId);
+      console.log(`♻️ Reusing existing UID ${uid} for user ${userId}`);
     } else {
-      uid = hashCode(req.user.userId.toString());
+      // Generate new UID
+      if (!isNaN(parseInt(userId))) {
+        uid = parseInt(userId);
+      } else {
+        uid = hashCode(userId);
+      }
     }
 
     // Get username from database
-    let username = 'Kullanıcı';
+    let username = 'User';
     try {
-      const user = await User.findById(req.user.userId);
+      const user = await User.findById(userId);
       username = user?.displayName || user?.email?.split('@')[0] || `User${uid}`;
     } catch (error) {
       console.log('User info fetch failed, using default');
@@ -816,48 +853,35 @@ app.get('/api/agora/rtc-token', authenticateToken, async (req, res) => {
       privilegeExpiredTs
     );
 
-    // 🎯 CRITICAL: Store user mapping
-    uidToUserIdMap.set(uid, req.user.userId.toString());
+    // 🎯 CRITICAL: Store bidirectional mapping
+    uidToUserIdMap.set(uid, userId);
+    userIdToUidMap.set(userId, uid);
     
-    // Track active user in channel
+    // 🎯 CRITICAL: Track user in channel
     if (!activeVoiceUsers.has(channelName)) {
       activeVoiceUsers.set(channelName, new Map());
     }
     
-    activeVoiceUsers.get(channelName).set(uid, {
+    const channelUsers = activeVoiceUsers.get(channelName);
+    channelUsers.set(uid, {
       username,
-      userId: req.user.userId.toString(),
+      userId,
       joinedAt: Date.now()
     });
 
-    // Clean up old users (older than 2 hours)
-    const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
-    for (const [ch, users] of activeVoiceUsers.entries()) {
-      for (const [u, data] of users.entries()) {
-        if (data.joinedAt < twoHoursAgo) {
-          users.delete(u);
-          uidToUserIdMap.delete(u);
-        }
-      }
-      if (users.size === 0) {
-        activeVoiceUsers.delete(ch);
-      }
+    // 🎯 CRITICAL: Build COMPLETE channel users list
+    const currentChannelUsers = [];
+    for (const [u, data] of channelUsers.entries()) {
+      currentChannelUsers.push({ 
+        uid: u, 
+        username: data.username,
+        userId: data.userId 
+      });
     }
 
-    // 🎯 CRITICAL FIX: Get ALL current channel users (not just cached)
-    const channelUsers = [];
-    if (activeVoiceUsers.has(channelName)) {
-      for (const [u, data] of activeVoiceUsers.get(channelName).entries()) {
-        channelUsers.push({ 
-          uid: u, 
-          username: data.username,
-          userId: data.userId 
-        });
-      }
-    }
-
-    console.log(`✅ RTC Token generated for ${username} (UID: ${uid}) in channel ${channelName}`);
-    console.log(`👥 Active users in ${channelName}:`, channelUsers.length, channelUsers.map(u => u.username));
+    console.log(`✅ RTC Token for ${username} (UID: ${uid}) in ${channelName}`);
+    console.log(`👥 Total users in ${channelName}:`, currentChannelUsers.length);
+    console.log(`👥 Users:`, currentChannelUsers.map(u => `${u.username}(${u.uid})`).join(', '));
 
     res.json({
       appId: AGORA_APP_ID,
@@ -865,26 +889,96 @@ app.get('/api/agora/rtc-token', authenticateToken, async (req, res) => {
       token: token,
       uid: uid,
       username: username,
-      channelUsers: channelUsers, // ALL current users
+      channelUsers: currentChannelUsers, // COMPLETE list
       expiresAt: privilegeExpiredTs
     });
 
   } catch (error) {
     console.error('❌ RTC Token error:', error);
-    res.status(500).json({ error: 'Failed to generate RTC token' });
+    res.status(500).json({ 
+      error: 'Failed to generate RTC token',
+      details: error.message 
+    });
   }
 });
 
-// 🔥 NEW ENDPOINT: Get username by UID (for realtime lookup)
+// 🔥 IMPROVED: Get username by UID endpoint
 app.get('/api/agora/user/:uid', authenticateToken, async (req, res) => {
   try {
     const uid = parseInt(req.params.uid);
+    
+    if (isNaN(uid)) {
+      return res.status(400).json({ error: 'Invalid UID' });
+    }
+    
     const username = await getUsernameByUid(uid);
     
-    res.json({ uid, username });
+    res.json({ 
+      uid, 
+      username,
+      cached: uidToUserIdMap.has(uid)
+    });
   } catch (error) {
     console.error('Get username error:', error);
     res.status(500).json({ error: 'Failed to get username' });
+  }
+});
+
+// 🔥 NEW: Get all users in a channel (for debugging/admin)
+app.get('/api/agora/channel/:channelName/users', authenticateToken, async (req, res) => {
+  try {
+    const { channelName } = req.params;
+    
+    if (!activeVoiceUsers.has(channelName)) {
+      return res.json({ channelName, users: [] });
+    }
+    
+    const channelUsers = activeVoiceUsers.get(channelName);
+    const users = [];
+    
+    for (const [uid, userData] of channelUsers.entries()) {
+      users.push({
+        uid,
+        username: userData.username,
+        userId: userData.userId,
+        joinedAt: new Date(userData.joinedAt).toISOString()
+      });
+    }
+    
+    res.json({ channelName, users, total: users.length });
+  } catch (error) {
+    console.error('Get channel users error:', error);
+    res.status(500).json({ error: 'Failed to get channel users' });
+  }
+});
+
+// 🔥 NEW: User leaves channel (cleanup endpoint)
+app.post('/api/agora/channel/:channelName/leave', authenticateToken, async (req, res) => {
+  try {
+    const { channelName } = req.params;
+    const userId = req.user.userId.toString();
+    
+    // Find and remove user from channel
+    if (activeVoiceUsers.has(channelName)) {
+      const channelUsers = activeVoiceUsers.get(channelName);
+      const uid = userIdToUidMap.get(userId);
+      
+      if (uid && channelUsers.has(uid)) {
+        channelUsers.delete(uid);
+        console.log(`👋 User ${userId} (UID: ${uid}) left ${channelName}`);
+        
+        // Clean up empty channels
+        if (channelUsers.size === 0) {
+          activeVoiceUsers.delete(channelName);
+          console.log(`🧹 Removed empty channel ${channelName}`);
+        }
+      }
+    }
+    
+    res.json({ success: true, message: 'Left channel successfully' });
+  } catch (error) {
+    console.error('Leave channel error:', error);
+    res.status(500).json({ error: 'Failed to leave channel' });
   }
 });
 
@@ -918,6 +1012,6 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, async () => {
   console.log(`✅ Server running on port ${PORT}`);
   console.log(`📡 API: http://localhost:${PORT}/api`);
-  console.log(`🔐 Agora: ${process.env.AGORA_APP_ID ? 'Configured' : 'Missing'}`);
+  console.log(`🔐 Agora: ${process.env.AGORA_APP_ID ? 'Configured ✅' : 'Missing ❌'}`);
   await initializeDefaultChannels();
 });
