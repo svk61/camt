@@ -13,7 +13,7 @@ import AdminPanel from './pages/AdminPanel';
 
 // API Service (no changes)
 const API = {
-  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5000/api',
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhosst:5000/api',
   
   getToken() {
     return localStorage.getItem('token');

@@ -109,7 +109,7 @@ function LoginView({ onLogin }) {
         
         <div className="relative z-10 text-xs text-indigo-200 mt-4">
           © 2026 Destek Topluluğu.{" "}
-<span className="opacity-60">Sürüm {process.env.REACT_APP_VER}</span>
+<span className="opacity-60">Sürüm {import.meta.env.VITE_VER}</span>
         </div>
       </div>
 
