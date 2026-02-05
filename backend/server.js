@@ -1,4 +1,4 @@
-// server.js - FIXED VERSION - Multi-user synchronization
+// server.js - COMPLETE FIXED VERSION
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -13,7 +13,10 @@ dotenv.config();
 const app = express();
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: ['http://localhost:5173', 'http://localhost:3000'],
+  credentials: true
+}));
 app.use(express.json());
 
 // MongoDB Connection
@@ -23,7 +26,7 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/support-p
 }).then(() => console.log('✅ MongoDB connected'))
   .catch(err => console.error('❌ MongoDB connection error:', err));
 
-console.log('🔑 AGORA_APP_ID:', process.env.AGORA_APP_ID);
+console.log('🔑 AGORA_APP_ID:', process.env.AGORA_APP_ID ? 'Configured' : 'Missing');
 console.log('🔐 AGORA_APP_CERTIFICATE:', process.env.AGORA_APP_CERTIFICATE ? 'Configured' : 'Missing');
 
 // Models
@@ -89,33 +92,77 @@ const Message = mongoose.model('Message', MessageSchema);
 const Assessment = mongoose.model('Assessment', AssessmentSchema);
 const AssessmentResult = mongoose.model('AssessmentResult', AssessmentResultSchema);
 
-// 🎯 IMPROVED: Voice users tracking with better data structure
+// 🎯 AGORA USER TRACKING - IMPROVED
 const activeVoiceUsers = new Map(); // channelName -> Map(uid -> userData)
-const uidToUserIdMap = new Map(); // uid -> userId (reverse lookup)
-const userIdToUidMap = new Map(); // userId -> uid (for fast lookups)
+const uidToUserIdMap = new Map(); // uid -> userId
+const userIdToUidMap = new Map(); // userId -> uid
 
-// 🔥 NEW: Clean up old users periodically
+// 🔥 IMPROVED: Generate unique UID
+function generateUniqueUid(userId, channelName) {
+  // Combine userId, channelName, and timestamp for uniqueness
+  const combined = `${userId}-${channelName}-${Date.now()}-${Math.random()}`;
+  
+  let hash = 0;
+  for (let i = 0; i < combined.length; i++) {
+    const char = combined.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & 0x7FFFFFFF; // Positive 32-bit integer
+  }
+  
+  // Generate UID in range 100000-999999
+  const uid = 100000 + (hash % 900000);
+  
+  // Ensure it's positive
+  return Math.abs(uid);
+}
+
+// 🔥 NEW: Ensure UID is unique in channel
+function ensureUniqueUidInChannel(channelName, userId) {
+  let uid = generateUniqueUid(userId, channelName);
+  
+  if (activeVoiceUsers.has(channelName)) {
+    const channelUsers = activeVoiceUsers.get(channelName);
+    let attempts = 0;
+    
+    // Try up to 10 times to get a unique UID
+    while (channelUsers.has(uid) && attempts < 10) {
+      uid = generateUniqueUid(userId + attempts, channelName);
+      attempts++;
+    }
+  }
+  
+  return uid;
+}
+
+// 🔥 NEW: Periodic cleanup
 setInterval(() => {
-  const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
+  const oneHourAgo = Date.now() - (60 * 60 * 1000);
+  let cleanedCount = 0;
   
   for (const [channelName, users] of activeVoiceUsers.entries()) {
     for (const [uid, userData] of users.entries()) {
-      if (userData.joinedAt < twoHoursAgo) {
+      if (userData.joinedAt < oneHourAgo) {
         users.delete(uid);
-        uidToUserIdMap.delete(uid);
-        if (userData.userId) {
-          userIdToUidMap.delete(userData.userId);
+        cleanedCount++;
+        
+        // Clean up mappings
+        const userId = uidToUserIdMap.get(uid);
+        if (userId) {
+          userIdToUidMap.delete(userId);
         }
-        console.log(`🧹 Cleaned up old user ${uid} from ${channelName}`);
+        uidToUserIdMap.delete(uid);
       }
     }
     
     if (users.size === 0) {
       activeVoiceUsers.delete(channelName);
-      console.log(`🧹 Removed empty channel ${channelName}`);
     }
   }
-}, 30 * 60 * 1000); // Run every 30 minutes
+  
+  if (cleanedCount > 0) {
+    console.log(`🧹 Cleaned up ${cleanedCount} stale users`);
+  }
+}, 5 * 60 * 1000); // Run every 5 minutes
 
 // Middleware to verify JWT token
 const authMiddleware = async (req, res, next) => {
@@ -182,18 +229,7 @@ function authenticateToken(req, res, next) {
   });
 }
 
-// Helper function: String to hash
-function hashCode(str) {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash;
-  }
-  return Math.abs(hash);
-}
-
-// 🔥 IMPROVED: Get username by UID with better fallback
+// Helper function: Get username by UID
 async function getUsernameByUid(uid) {
   try {
     // First check UID to userId mapping
@@ -217,15 +253,15 @@ async function getUsernameByUid(uid) {
     }
     
     // Last resort: generic fallback
-    return `Guest ${String(uid).slice(-4)}`;
+    return `User ${String(uid).slice(-4)}`;
   } catch (error) {
     console.error('getUsernameByUid error:', error);
-    return `Guest ${String(uid).slice(-4)}`;
+    return `User ${String(uid).slice(-4)}`;
   }
 }
 
 // ========================================
-// EXISTING ROUTES (kept the same)
+// ROUTES
 // ========================================
 
 app.get('/health', (req, res) => {
@@ -796,7 +832,7 @@ app.get('/api/agora/token', authenticateToken, async (req, res) => {
   }
 });
 
-// 🔥 CRITICAL FIX: RTC Token with COMPLETE user tracking
+// 🔥 COMPLETELY FIXED: RTC Token endpoint
 app.get('/api/agora/rtc-token', authenticateToken, async (req, res) => {
   try {
     const { channelName } = req.query;
@@ -816,21 +852,28 @@ app.get('/api/agora/rtc-token', authenticateToken, async (req, res) => {
     const currentTimestamp = Math.floor(Date.now() / 1000);
     const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
 
-    // Generate or retrieve UID
     const userId = req.user.userId.toString();
+    
+    // 🔥 FIXED: Generate or reuse unique UID
     let uid;
     
     // Check if user already has a UID for this channel
     if (userIdToUidMap.has(userId)) {
-      uid = userIdToUidMap.get(userId);
-      console.log(`♻️ Reusing existing UID ${uid} for user ${userId}`);
-    } else {
-      // Generate new UID
-      if (!isNaN(parseInt(userId))) {
-        uid = parseInt(userId);
-      } else {
-        uid = hashCode(userId);
+      const existingUid = userIdToUidMap.get(userId);
+      // Verify this UID is still in the channel
+      if (activeVoiceUsers.has(channelName)) {
+        const channelUsers = activeVoiceUsers.get(channelName);
+        if (channelUsers.has(existingUid)) {
+          uid = existingUid;
+          console.log(`♻️ Reusing existing UID ${uid} for user ${userId} in ${channelName}`);
+        }
       }
+    }
+    
+    // Generate new unique UID if needed
+    if (!uid) {
+      uid = ensureUniqueUidInChannel(channelName, userId);
+      console.log(`🆕 Generated new UID ${uid} for user ${userId} in ${channelName}`);
     }
 
     // Get username from database
@@ -843,21 +886,11 @@ app.get('/api/agora/rtc-token', authenticateToken, async (req, res) => {
       username = `User${uid}`;
     }
 
-    // Build RTC token
-    const token = RtcTokenBuilder.buildTokenWithUid(
-      AGORA_APP_ID,
-      AGORA_APP_CERTIFICATE,
-      channelName,
-      uid,
-      RtcRole.PUBLISHER,
-      privilegeExpiredTs
-    );
-
-    // 🎯 CRITICAL: Store bidirectional mapping
+    // 🔥 Store bidirectional mapping
     uidToUserIdMap.set(uid, userId);
     userIdToUidMap.set(userId, uid);
     
-    // 🎯 CRITICAL: Track user in channel
+    // 🔥 Initialize or update channel tracking
     if (!activeVoiceUsers.has(channelName)) {
       activeVoiceUsers.set(channelName, new Map());
     }
@@ -869,9 +902,10 @@ app.get('/api/agora/rtc-token', authenticateToken, async (req, res) => {
       joinedAt: Date.now()
     });
 
-    // 🎯 CRITICAL: Build COMPLETE channel users list
+    // 🔥 Build channel users list (excluding current user)
     const currentChannelUsers = [];
     for (const [u, data] of channelUsers.entries()) {
+      if (u === uid) continue; // Exclude self
       currentChannelUsers.push({ 
         uid: u, 
         username: data.username,
@@ -880,8 +914,18 @@ app.get('/api/agora/rtc-token', authenticateToken, async (req, res) => {
     }
 
     console.log(`✅ RTC Token for ${username} (UID: ${uid}) in ${channelName}`);
-    console.log(`👥 Total users in ${channelName}:`, currentChannelUsers.length);
-    console.log(`👥 Users:`, currentChannelUsers.map(u => `${u.username}(${u.uid})`).join(', '));
+    console.log(`👥 Total users in ${channelName}:`, channelUsers.size);
+    console.log(`👥 Other users:`, currentChannelUsers.map(u => `${u.username}(${u.uid})`).join(', '));
+
+    // Build RTC token
+    const token = RtcTokenBuilder.buildTokenWithUid(
+      AGORA_APP_ID,
+      AGORA_APP_CERTIFICATE,
+      channelName,
+      uid,
+      RtcRole.PUBLISHER,
+      privilegeExpiredTs
+    );
 
     res.json({
       appId: AGORA_APP_ID,
@@ -889,7 +933,7 @@ app.get('/api/agora/rtc-token', authenticateToken, async (req, res) => {
       token: token,
       uid: uid,
       username: username,
-      channelUsers: currentChannelUsers, // COMPLETE list
+      channelUsers: currentChannelUsers,
       expiresAt: privilegeExpiredTs
     });
 
@@ -902,7 +946,7 @@ app.get('/api/agora/rtc-token', authenticateToken, async (req, res) => {
   }
 });
 
-// 🔥 IMPROVED: Get username by UID endpoint
+// 🔥 NEW: Get username by UID endpoint
 app.get('/api/agora/user/:uid', authenticateToken, async (req, res) => {
   try {
     const uid = parseInt(req.params.uid);
@@ -915,8 +959,7 @@ app.get('/api/agora/user/:uid', authenticateToken, async (req, res) => {
     
     res.json({ 
       uid, 
-      username,
-      cached: uidToUserIdMap.has(uid)
+      username
     });
   } catch (error) {
     console.error('Get username error:', error);
@@ -924,13 +967,13 @@ app.get('/api/agora/user/:uid', authenticateToken, async (req, res) => {
   }
 });
 
-// 🔥 NEW: Get all users in a channel (for debugging/admin)
+// 🔥 NEW: Get all users in a channel
 app.get('/api/agora/channel/:channelName/users', authenticateToken, async (req, res) => {
   try {
     const { channelName } = req.params;
     
     if (!activeVoiceUsers.has(channelName)) {
-      return res.json({ channelName, users: [] });
+      return res.json({ channelName, users: [], total: 0 });
     }
     
     const channelUsers = activeVoiceUsers.get(channelName);
@@ -952,20 +995,21 @@ app.get('/api/agora/channel/:channelName/users', authenticateToken, async (req, 
   }
 });
 
-// 🔥 NEW: User leaves channel (cleanup endpoint)
+// 🔥 NEW: User leaves channel
 app.post('/api/agora/channel/:channelName/leave', authenticateToken, async (req, res) => {
   try {
     const { channelName } = req.params;
     const userId = req.user.userId.toString();
     
-    // Find and remove user from channel
+    console.log(`👋 User ${userId} leaving ${channelName}`);
+    
     if (activeVoiceUsers.has(channelName)) {
       const channelUsers = activeVoiceUsers.get(channelName);
       const uid = userIdToUidMap.get(userId);
       
       if (uid && channelUsers.has(uid)) {
         channelUsers.delete(uid);
-        console.log(`👋 User ${userId} (UID: ${uid}) left ${channelName}`);
+        console.log(`✅ User ${userId} (UID: ${uid}) removed from ${channelName}`);
         
         // Clean up empty channels
         if (channelUsers.size === 0) {
@@ -974,6 +1018,8 @@ app.post('/api/agora/channel/:channelName/leave', authenticateToken, async (req,
         }
       }
     }
+    
+    // Don't delete userIdToUidMap mapping - user might join another channel
     
     res.json({ success: true, message: 'Left channel successfully' });
   } catch (error) {
