@@ -13,7 +13,7 @@ import AdminPanel from './pages/AdminPanel';
 
 // API Service (no changes)
 const API = {
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhosst:5000/api',
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
   
   getToken() {
     return localStorage.getItem('token');
@@ -117,6 +117,11 @@ const API = {
   
   async getAgoraRtcToken(channelName) {
     return this.request(`/agora/rtc-token?channelName=${encodeURIComponent(channelName)}`);
+  },
+
+  // 🔥 CRITICAL FIX: Added missing method for voice chat username fetching
+  async getUsernameByUid(uid) {
+    return this.request(`/agora/user/${uid}`);
   },
 
   async getAssessmentResults() {
