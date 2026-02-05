@@ -1,4 +1,4 @@
-// ChatView.jsx - FINAL VERSION - All bugs fixed
+// ChatView.jsx - COMPLETELY FIXED - All 3 issues resolved
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Send, Hash, Settings, LogOut, Mic, MicOff, PhoneOff, Volume2, VolumeX, Menu, X, ChevronUp, ChevronDown, Signal } from 'lucide-react';
 import { API, AgoraRTC, AgoraRTM } from '../App';
@@ -205,6 +205,7 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
   const [isDeafened, setIsDeafened] = useState(false);
   const [voiceUsers, setVoiceUsers] = useState([]);
   const [speakingUsers, setSpeakingUsers] = useState(new Set());
+  const [localUid, setLocalUid] = useState(null); // 🔥 NEW: Track local UID
   
   // UI State
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -216,6 +217,12 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
   const messagePollingRef = useRef(null);
   const userCacheRef = useRef({});
   const rtmInitializedRef = useRef(false);
+  const isDeafenedRef = useRef(false); // 🔥 NEW: Ref for deafen state
+
+  // 🔥 NEW: Sync deafen ref with state
+  useEffect(() => {
+    isDeafenedRef.current = isDeafened;
+  }, [isDeafened]);
 
   // Update active channel if channels change
   useEffect(() => {
@@ -224,7 +231,7 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
     }
   }, [channels]);
 
-  // 🔥 FIXED: RTM initialization - ONCE per app lifecycle
+  // RTM initialization - ONCE per app lifecycle
   useEffect(() => {
     const initRTM = async () => {
       if (rtmInitializedRef.current) return;
@@ -252,9 +259,7 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
       try {
         await AgoraRTM.joinChannel(channelName);
         
-        // Set message callback for this channel
         AgoraRTM.onMessage(channelName, (msg) => {
-          // Optionally update messages in real-time
           console.log('📨 RTM message:', msg.text);
         });
       } catch (error) {
@@ -264,7 +269,6 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
 
     joinRTMChannel();
     
-    // Cleanup - leave channel when switching
     return () => {
       AgoraRTM.leaveChannel(channelName);
     };
@@ -344,7 +348,6 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
       const savedMessage = await API.sendMessage(activeChannel.id || activeChannel._id, currentInput);
       setMessages(prev => prev.map(m => m._id === tempId ? savedMessage : m));
       
-      // Try RTM send (optional)
       try {
         await AgoraRTM.sendMessage(activeChannel.name, currentInput);
       } catch (e) { /* ignore */ }
@@ -369,7 +372,46 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
     return `Misafir ${String(uid).slice(-4)}`;
   }, []);
 
-  // 🔥🔥🔥 COMPLETELY FIXED Voice Call
+  // 🔥🔥🔥 COMPLETELY FIXED: Voice user management
+  const updateVoiceUser = useCallback((uid, updates = {}) => {
+    setVoiceUsers(prev => {
+      // Check if user already exists
+      const existingIndex = prev.findIndex(u => u.uid === uid);
+      
+      if (existingIndex !== -1) {
+        // Update existing user - MERGE updates
+        const updated = [...prev];
+        updated[existingIndex] = {
+          ...updated[existingIndex],
+          ...updates,
+          // Preserve username if not provided in updates
+          username: updates.username || updated[existingIndex].username
+        };
+        return updated;
+      } else {
+        // Add new user
+        const username = updates.username || userCacheRef.current[uid] || `User ${uid}`;
+        return [...prev, { 
+          uid, 
+          username,
+          isMuted: true, // Default to muted until audio is published
+          isLocal: false,
+          ...updates 
+        }];
+      }
+    });
+  }, []);
+  
+  const removeVoiceUser = useCallback((uid) => {
+    setVoiceUsers(prev => prev.filter(u => u.uid !== uid));
+    setSpeakingUsers(prev => {
+      const next = new Set(prev);
+      next.delete(uid);
+      return next;
+    });
+  }, []);
+
+  // 🔥🔥🔥 COMPLETELY FIXED: Voice call with proper event handling
   const joinVoiceCall = useCallback(async () => {
     if (connectionState !== 'DISCONNECTED') return;
     
@@ -382,7 +424,7 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
       const tokenData = await API.getAgoraRtcToken(channelName);
       console.log('✅ Token received, UID:', tokenData.uid);
 
-      // 🎯 Cache all existing users
+      // Cache all existing users from backend
       if (tokenData.channelUsers?.length > 0) {
         console.log(`📥 Caching ${tokenData.channelUsers.length} users`);
         tokenData.channelUsers.forEach(u => {
@@ -399,33 +441,7 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
       const client = rtcClientRef.current;
       client.removeAllListeners();
 
-      // Event listeners
-      client.on('user-published', async (remoteUser, mediaType) => {
-        console.log('🎤 User published:', remoteUser.uid);
-        try {
-          await client.subscribe(remoteUser, mediaType);
-          
-          if (mediaType === 'audio') {
-            remoteUser.audioTrack.play();
-            
-            let username = userCacheRef.current[remoteUser.uid];
-            if (!username) {
-              username = await fetchUsernameByUid(remoteUser.uid);
-            }
-            
-            updateVoiceUser(remoteUser.uid, { isMuted: false, username });
-          }
-        } catch (error) {
-          console.error('Subscribe error:', error);
-        }
-      });
-
-      client.on('user-unpublished', (remoteUser, mediaType) => {
-        if (mediaType === 'audio') {
-          updateVoiceUser(remoteUser.uid, { isMuted: true });
-        }
-      });
-
+      // 🔥 CRITICAL FIX: user-joined - Only add to list, don't assume muted
       client.on('user-joined', async (remoteUser) => {
         console.log('👋 User joined:', remoteUser.uid);
         
@@ -434,14 +450,64 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
           username = await fetchUsernameByUid(remoteUser.uid);
         }
         
-        updateVoiceUser(remoteUser.uid, { isMuted: true, username });
+        // Add user but mark as muted (no audio yet)
+        updateVoiceUser(remoteUser.uid, { 
+          username, 
+          isMuted: true, // They haven't published audio yet
+          isLocal: false 
+        });
       });
 
+      // 🔥 CRITICAL FIX: user-published - Update mute status when audio is published
+      client.on('user-published', async (remoteUser, mediaType) => {
+        console.log('🎤 User published:', remoteUser.uid, mediaType);
+        
+        if (mediaType !== 'audio') return;
+        
+        try {
+          await client.subscribe(remoteUser, mediaType);
+          
+          // Play audio
+          remoteUser.audioTrack.play();
+          
+          // 🔥 NEW: Apply deafen if active
+          if (isDeafenedRef.current) {
+            remoteUser.audioTrack.setVolume(0);
+            console.log('🔇 Applied deafen to newly published user:', remoteUser.uid);
+          }
+          
+          // Update username if needed
+          let username = userCacheRef.current[remoteUser.uid];
+          if (!username) {
+            username = await fetchUsernameByUid(remoteUser.uid);
+          }
+          
+          // Mark as NOT muted (audio is now available)
+          updateVoiceUser(remoteUser.uid, { 
+            username,
+            isMuted: false 
+          });
+          
+        } catch (error) {
+          console.error('Subscribe error:', error);
+        }
+      });
+
+      // 🔥 FIXED: user-unpublished - Mark as muted
+      client.on('user-unpublished', (remoteUser, mediaType) => {
+        if (mediaType === 'audio') {
+          console.log('🔇 User unpublished audio:', remoteUser.uid);
+          updateVoiceUser(remoteUser.uid, { isMuted: true });
+        }
+      });
+
+      // user-left - Remove from list
       client.on('user-left', (remoteUser) => {
         console.log('👋 User left:', remoteUser.uid);
         removeVoiceUser(remoteUser.uid);
       });
 
+      // Volume indicator for speaking detection
       client.on('volume-indicator', (volumes) => {
         const speaking = new Set();
         volumes.forEach(v => {
@@ -453,6 +519,9 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
       // Join channel
       const uid = await client.join(tokenData.appId, channelName, tokenData.token, tokenData.uid);
       console.log('✅ Joined, UID:', uid);
+      
+      // 🔥 NEW: Store local UID
+      setLocalUid(uid);
 
       // Create audio track
       audioTrackRef.current = await AgoraRTC.createMicrophoneAudioTrack({
@@ -466,46 +535,73 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
       client.enableAudioVolumeIndicator();
       console.log('✅ Audio published');
 
-      // Build participant list
+      // 🔥 FIXED: Build initial participant list WITHOUT duplicates
       const participants = [];
+      const addedUids = new Set();
       
-      // Add self
+      // 1. Add self FIRST
       const myUsername = tokenData.username || user.displayName || user.email.split('@')[0];
       userCacheRef.current[uid] = myUsername;
-      participants.push({ uid, username: myUsername, isMuted: false, isLocal: true });
+      participants.push({ 
+        uid, 
+        username: myUsername, 
+        isMuted: false, // Local user is NOT muted by default
+        isLocal: true 
+      });
+      addedUids.add(uid);
 
-      // Add existing users from backend
+      // 2. Add backend users (but skip self if already added)
       if (tokenData.channelUsers) {
         for (const existingUser of tokenData.channelUsers) {
-          if (existingUser.uid === uid) continue;
+          if (addedUids.has(existingUser.uid)) continue; // Skip duplicates
           
           const username = existingUser.username || userCacheRef.current[existingUser.uid] || `User ${existingUser.uid}`;
-          participants.push({ uid: existingUser.uid, username, isMuted: true, isLocal: false });
+          participants.push({ 
+            uid: existingUser.uid, 
+            username, 
+            isMuted: true, // Haven't heard audio yet
+            isLocal: false 
+          });
+          addedUids.add(existingUser.uid);
         }
       }
 
-      // Wait and check for remote users
+      // 3. Wait briefly and add any remote users not in backend list
       await new Promise(resolve => setTimeout(resolve, 500));
       
       for (const remoteUser of client.remoteUsers) {
-        if (participants.find(p => p.uid === remoteUser.uid)) continue;
+        if (addedUids.has(remoteUser.uid)) continue; // Skip duplicates
         
         let username = userCacheRef.current[remoteUser.uid];
         if (!username) {
           username = await fetchUsernameByUid(remoteUser.uid);
         }
         
-        participants.push({ uid: remoteUser.uid, username, isMuted: !remoteUser.hasAudio, isLocal: false });
+        participants.push({ 
+          uid: remoteUser.uid, 
+          username, 
+          isMuted: !remoteUser.hasAudio, 
+          isLocal: false 
+        });
+        addedUids.add(remoteUser.uid);
         
+        // Subscribe if they have audio
         if (remoteUser.hasAudio && remoteUser.audioTrack) {
           try {
             await client.subscribe(remoteUser, 'audio');
             remoteUser.audioTrack.play();
-          } catch (e) { /* ignore */ }
+            
+            // 🔥 NEW: Apply deafen if active
+            if (isDeafenedRef.current) {
+              remoteUser.audioTrack.setVolume(0);
+            }
+          } catch (e) { console.error('Initial subscribe error:', e); }
         }
       }
 
       console.log(`🎉 Total participants: ${participants.length}`);
+      console.log('👥 Users:', participants.map(p => `${p.username}(${p.uid})`).join(', '));
+      
       setVoiceUsers(participants);
       setInVoiceCall(true);
       setConnectionState('CONNECTED');
@@ -516,7 +612,7 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
       setConnectionState('DISCONNECTED');
       leaveVoiceCall();
     }
-  }, [connectionState, activeChannel, user, fetchUsernameByUid]);
+  }, [connectionState, activeChannel, user, fetchUsernameByUid, updateVoiceUser, removeVoiceUser]);
 
   const leaveVoiceCall = useCallback(async () => {
     try {
@@ -539,49 +635,50 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
       setIsMuted(false);
       setIsDeafened(false);
       setConnectionState('DISCONNECTED');
+      setLocalUid(null);
     }
   }, []);
 
-  const updateVoiceUser = useCallback((uid, data = {}) => {
-    setVoiceUsers(prev => {
-      const existing = prev.find(u => u.uid === uid);
-      const username = data.username || existing?.username || userCacheRef.current[uid] || `Misafir ${uid}`;
-
-      if (existing) {
-        return prev.map(u => u.uid === uid ? { ...u, ...data, username } : u);
-      } else {
-        return [...prev, { uid, username, isMuted: false, ...data }];
-      }
-    });
-  }, []);
-  
-  const removeVoiceUser = useCallback((uid) => {
-    setVoiceUsers(prev => prev.filter(u => u.uid !== uid));
-    setSpeakingUsers(prev => {
-      const next = new Set(prev);
-      next.delete(uid);
-      return next;
-    });
-  }, []);
-
+  // 🔥🔥🔥 COMPLETELY FIXED: Mute toggle with voice users list update
   const toggleMute = useCallback(async () => {
-    if (audioTrackRef.current) {
-      await audioTrackRef.current.setMuted(!isMuted);
-      setIsMuted(!isMuted);
+    if (!audioTrackRef.current || localUid === null) return;
+    
+    try {
+      const newMutedState = !isMuted;
+      
+      // Set track muted state
+      await audioTrackRef.current.setMuted(newMutedState);
+      
+      // Update UI state
+      setIsMuted(newMutedState);
+      
+      // 🔥 CRITICAL FIX: Update local user in voice users list
+      updateVoiceUser(localUid, { isMuted: newMutedState });
+      
+      console.log(`🎤 Mute toggled: ${newMutedState ? 'MUTED' : 'UNMUTED'}`);
+    } catch (error) {
+      console.error('Toggle mute error:', error);
     }
-  }, [isMuted]);
+  }, [isMuted, localUid, updateVoiceUser]);
 
+  // 🔥🔥🔥 COMPLETELY FIXED: Deafen with support for new users
   const toggleDeafen = useCallback(() => {
     const newState = !isDeafened;
     setIsDeafened(newState);
+    isDeafenedRef.current = newState; // 🔥 Update ref immediately
+    
+    console.log(`🔊 Deafen toggled: ${newState ? 'DEAFENED' : 'UNDEAFENED'}`);
     
     if (rtcClientRef.current) {
+      // Apply to ALL current remote users
       rtcClientRef.current.remoteUsers.forEach(user => {
         if (user.audioTrack) {
           user.audioTrack.setVolume(newState ? 0 : 100);
         }
       });
     }
+    
+    // Note: New users will be handled in user-published event via isDeafenedRef
   }, [isDeafened]);
 
   const groupedChannels = useMemo(() => {
@@ -591,6 +688,14 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
       return acc;
     }, {});
   }, [channels]);
+
+  // 🔥 NEW: Enhance voice users with speaking status for rendering
+  const enhancedVoiceUsers = useMemo(() => {
+    return voiceUsers.map(user => ({
+      ...user,
+      isSpeaking: speakingUsers.has(user.uid)
+    }));
+  }, [voiceUsers, speakingUsers]);
 
   return (
     <div className="h-screen flex bg-gray-900 overflow-hidden">
@@ -648,11 +753,11 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
             </div>
             
             <div className="p-2 max-h-48 overflow-y-auto space-y-1">
-               {voiceUsers.map((voiceUser) => (
+               {enhancedVoiceUsers.map((voiceUser) => (
                  <VoiceUserCard
                    key={voiceUser.uid}
                    username={voiceUser.username}
-                   isSpeaking={speakingUsers.has(voiceUser.uid)}
+                   isSpeaking={voiceUser.isSpeaking}
                    isMuted={voiceUser.isMuted}
                  />
                ))}
@@ -780,7 +885,7 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
         <MobileVoiceBar 
           isOpen={inVoiceCall}
           activeChannel={activeChannel}
-          voiceUsers={voiceUsers}
+          voiceUsers={enhancedVoiceUsers}
           isMuted={isMuted}
           isDeafened={isDeafened}
           toggleMute={toggleMute}
