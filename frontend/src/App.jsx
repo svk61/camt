@@ -16,7 +16,6 @@ const API = {
   },
   
   async request(endpoint, options = {}) {
-    console.log('All env:', import.meta.env);
     const token = this.getToken();
     const headers = {
       'Content-Type': 'application/json',
@@ -133,60 +132,58 @@ const API = {
 // RTC Wrapper
 const AgoraRTCWrapper = {
   createClient: (config) => {
-    console.log('Creating Agora RTC client with config:', config);
     return AgoraRTC.createClient(config);
   },
   
   createMicrophoneAudioTrack: async (config) => {
-    console.log('Creating microphone audio track with config:', config);
     return await AgoraRTC.createMicrophoneAudioTrack(config);
   }
 };
 
-// RTM Wrapper
+// 🔥🔥🔥 COMPLETELY FIXED RTM Wrapper - Singleton pattern
 const AgoraRTMWrapper = {
   client: null,
-  channel: null,
-  messageCallback: null,
+  channels: new Map(), // channelName -> channel object
+  messageCallbacks: new Map(), // channelName -> callback
   isInitialized: false,
-  isChannelJoined: false,
   currentUserId: null,
+  currentAppId: null,
   
   async initialize(appId, userId, token) {
     try {
-      console.log('🔹 RTM Initialize başlıyor...');
-      console.log('📋 AppId:', appId);
-      console.log('📋 UserId:', userId);
-      console.log('📋 Token length:', token?.length);
+      // 🔥 CRITICAL: Eğer zaten aynı kullanıcı ile login ise skip et
+      if (this.client && this.isInitialized && this.currentUserId === userId) {
+        console.log('✅ RTM zaten aktif (UserId:', userId, ')');
+        return true;
+      }
       
+      console.log('🔹 RTM Initialize:', userId);
+      
+      // Farklı kullanıcı ise önce logout yap
       if (this.client && this.isInitialized) {
-        console.log('🔄 RTM zaten aktif, yeniden başlatılıyor...');
+        console.log('🔄 Önceki RTM session temizleniyor...');
         await this.logout();
       }
       
       this.client = AgoraRTM.createInstance(appId);
       this.currentUserId = userId;
-      
-      console.log('✅ RTM client oluşturuldu');
+      this.currentAppId = appId;
       
       await this.client.login({ 
         token: token, 
         uid: userId 
       });
       
-      console.log('✅ RTM login başarılı:', userId);
-      
+      console.log('✅ RTM login:', userId);
       this.isInitialized = true;
       
       this.client.on('ConnectionStateChanged', (newState, reason) => {
-        console.log('🔔 RTM Connection State:', newState, 'Reason:', reason);
+        console.log('🔔 RTM State:', newState, reason);
       });
       
       return true;
     } catch (error) {
-      console.error('❌ RTM initialization failed:', error);
-      console.error('Error code:', error.code);
-      console.error('Error message:', error.message);
+      console.error('❌ RTM init failed:', error.message);
       this.isInitialized = false;
       return false;
     }
@@ -194,29 +191,30 @@ const AgoraRTMWrapper = {
   
   async joinChannel(channelName) {
     if (!this.isInitialized || !this.client) {
-      console.error('❌ RTM not initialized! Call initialize() first.');
+      console.error('❌ RTM not initialized');
       throw new Error('RTM not initialized');
     }
     
     try {
-      console.log('🔹 Joining RTM channel:', channelName);
-      
-      if (this.channel && this.isChannelJoined) {
-        console.log('🔄 Mevcut kanaldan ayrılınıyor...');
-        await this.channel.leave();
-        this.isChannelJoined = false;
+      // 🔥 CRITICAL: Eğer aynı kanalda ise skip et
+      if (this.channels.has(channelName)) {
+        console.log('✅ Zaten kanaldayız:', channelName);
+        return true;
       }
       
-      this.channel = this.client.createChannel(channelName);
-      await this.channel.join();
-      this.isChannelJoined = true;
+      console.log('🔹 RTM channel join:', channelName);
       
-      console.log('✅ RTM kanala katıldı:', channelName);
+      const channel = this.client.createChannel(channelName);
+      await channel.join();
       
-      this.channel.on('ChannelMessage', (message, memberId) => {
-        console.log('📨 RTM mesajı alındı:', message.text, 'from:', memberId);
-        if (this.messageCallback) {
-          this.messageCallback({
+      this.channels.set(channelName, channel);
+      console.log('✅ RTM joined:', channelName);
+      
+      // Message listener
+      channel.on('ChannelMessage', (message, memberId) => {
+        const callback = this.messageCallbacks.get(channelName);
+        if (callback) {
+          callback({
             text: message.text,
             userId: memberId,
             timestamp: new Date().toISOString()
@@ -224,77 +222,78 @@ const AgoraRTMWrapper = {
         }
       });
       
-      this.channel.on('MemberJoined', (memberId) => {
-        console.log('👤 Member joined:', memberId);
-      });
-      
-      this.channel.on('MemberLeft', (memberId) => {
-        console.log('👋 Member left:', memberId);
-      });
-      
       return true;
     } catch (error) {
-      console.error('❌ Failed to join RTM channel:', error);
-      this.isChannelJoined = false;
+      console.error('❌ RTM join failed:', error.message);
       throw error;
     }
   },
   
-  async sendMessage(text) {
-    if (!this.isChannelJoined || !this.channel) {
-      console.error('❌ No active RTM channel!');
-      throw new Error('No active RTM channel');
+  async sendMessage(channelName, text) {
+    const channel = this.channels.get(channelName);
+    
+    if (!channel) {
+      console.error('❌ No active channel:', channelName);
+      throw new Error('No active channel');
     }
     
     try {
-      console.log('📤 Sending RTM message:', text);
-      await this.channel.sendMessage({ text, messageType: 'TEXT' });
-      console.log('✅ RTM mesaj gönderildi');
+      await channel.sendMessage({ text, messageType: 'TEXT' });
       return true;
     } catch (error) {
-      console.error('❌ Failed to send RTM message:', error);
+      console.error('❌ RTM send failed:', error.message);
       throw error;
     }
   },
   
-  onMessage(callback) {
-    this.messageCallback = callback;
+  onMessage(channelName, callback) {
+    this.messageCallbacks.set(channelName, callback);
   },
   
-  async leaveChannel() {
-    try {
-      if (this.channel && this.isChannelJoined) {
-        await this.channel.leave();
-        this.channel = null;
-        this.isChannelJoined = false;
-        console.log('✅ Left RTM channel');
+  async leaveChannel(channelName) {
+    const channel = this.channels.get(channelName);
+    
+    if (channel) {
+      try {
+        await channel.leave();
+        this.channels.delete(channelName);
+        this.messageCallbacks.delete(channelName);
+        console.log('✅ Left RTM channel:', channelName);
+      } catch (error) {
+        console.error('❌ Leave failed:', error.message);
       }
-    } catch (error) {
-      console.error('❌ Failed to leave RTM channel:', error);
     }
   },
   
   async logout() {
     try {
-      await this.leaveChannel();
+      // Leave all channels
+      for (const [channelName, channel] of this.channels.entries()) {
+        try {
+          await channel.leave();
+        } catch (e) { /* ignore */ }
+      }
+      
+      this.channels.clear();
+      this.messageCallbacks.clear();
+      
       if (this.client && this.isInitialized) {
         await this.client.logout();
         this.client = null;
-        this.isInitialized = false;
-        this.currentUserId = null;
-        console.log('✅ Logged out from RTM');
       }
+      
+      this.isInitialized = false;
+      this.currentUserId = null;
+      console.log('✅ RTM logout complete');
     } catch (error) {
-      console.error('❌ Failed to logout from RTM:', error);
+      console.error('❌ RTM logout error:', error.message);
     }
   }
 };
 
 export { API, AgoraRTCWrapper as AgoraRTC, AgoraRTMWrapper as AgoraRTM };
 
-// ====================================
-// 🔥 FIXED APP COMPONENT
-// ====================================
+// App component
 function App() {
   const [currentView, setCurrentView] = useState('login');
   const [user, setUser] = useState(null);
@@ -318,7 +317,7 @@ function App() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  // 🔥 FIX 1: loadUserData artık async/await ile çalışıyor ve state'i güncelliyor
+  // 🔥 FIXED: Proper initialization
   useEffect(() => {
     const initializeApp = async () => {
       const token = localStorage.getItem('token');
@@ -329,19 +328,17 @@ function App() {
       }
 
       try {
-        console.log('🔄 Kullanıcı verileri yükleniyor...');
+        console.log('🔄 Uygulama başlatılıyor...');
         
-        // Önce stored user'ı al
         const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
         
         if (!storedUser.id) {
-          throw new Error('No user data found');
+          throw new Error('No user data');
         }
 
-        console.log('✅ Kullanıcı bulundu:', storedUser.email);
+        console.log('✅ Kullanıcı:', storedUser.email);
         setUser(storedUser);
         
-        // Assessment tamamlanmışsa kanalları yükle
         if (storedUser.hasCompletedAssessment) {
           console.log('📡 Kanallar yükleniyor...');
           const channelsData = await API.getChannels();
@@ -350,12 +347,11 @@ function App() {
           setChannels(channelsData);
           setCurrentView('chat');
         } else {
-          console.log('⚠️ Assessment henüz tamamlanmamış');
           setCurrentView('assessment');
         }
         
       } catch (error) {
-        console.error('❌ Kullanıcı verileri yüklenemedi:', error);
+        console.error('❌ Init failed:', error);
         localStorage.clear();
         setCurrentView('login');
       } finally {
@@ -364,7 +360,7 @@ function App() {
     };
 
     initializeApp();
-  }, []); // 🔥 Sadece mount'ta çalışsın
+  }, []);
 
   if (loading) {
     return (
@@ -411,8 +407,8 @@ function App() {
           localStorage.setItem('user', JSON.stringify(updatedUser));
           setCurrentView('chat');
         } catch (error) {
-          console.error('Failed to submit assessment:', error);
-          alert('Anket gönderimi başarısız. Lütfen tekrar deneyin.');
+          console.error('Assessment submit failed:', error);
+          alert('Anket gönderimi başarısız.');
         }
       }}
     />;
