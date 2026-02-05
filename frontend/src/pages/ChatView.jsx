@@ -218,6 +218,7 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
   const userCacheRef = useRef({});
   const rtmInitializedRef = useRef(false);
   const isDeafenedRef = useRef(false);
+  const subscribedUsersRef = useRef(new Set()); // Track subscribed users
 
   // Sync deafen ref with state
   useEffect(() => {
@@ -404,9 +405,55 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
       next.delete(uid);
       return next;
     });
+    subscribedUsersRef.current.delete(uid);
   }, []);
 
-  // 🔥 FIXED: Voice call with proper subscription for all users
+  // 🔥 TAMAMEN YENİ: Zorunlu subscribe fonksiyonu
+  const forceSubscribeToUser = useCallback(async (client, remoteUser) => {
+    try {
+      // Eğer zaten subscribed değilsek
+      if (!subscribedUsersRef.current.has(remoteUser.uid) && remoteUser.hasAudio) {
+        console.log(`🔗 Force subscribing to ${remoteUser.uid}`);
+        await client.subscribe(remoteUser, 'audio');
+        
+        if (remoteUser.audioTrack) {
+          subscribedUsersRef.current.add(remoteUser.uid);
+          remoteUser.audioTrack.play();
+          
+          // Apply deafen if active
+          if (isDeafenedRef.current) {
+            remoteUser.audioTrack.setVolume(0);
+            console.log(`🔇 Deafened ${remoteUser.uid} on subscribe`);
+          }
+          
+          let username = userCacheRef.current[remoteUser.uid];
+          if (!username) {
+            username = await fetchUsernameByUid(remoteUser.uid);
+          }
+          
+          updateVoiceUser(remoteUser.uid, {
+            username,
+            isMuted: false
+          });
+          
+          return true;
+        }
+      }
+    } catch (error) {
+      console.error(`❌ Failed to force subscribe to ${remoteUser.uid}:`, error);
+    }
+    return false;
+  }, [fetchUsernameByUid, updateVoiceUser]);
+
+  // 🔥 TAMAMEN YENİ: Tüm kullanıcılara subscribe ol
+  const subscribeToAllExistingUsers = useCallback(async (client) => {
+    console.log('🔄 Subscribing to all existing users...');
+    for (const remoteUser of client.remoteUsers) {
+      await forceSubscribeToUser(client, remoteUser);
+    }
+  }, [forceSubscribeToUser]);
+
+  // 🔥 TAMAMEN YENİ: Geliştirilmiş voice call join
   const joinVoiceCall = useCallback(async () => {
     if (connectionState !== 'DISCONNECTED') return;
     
@@ -415,13 +462,22 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
       const channelName = `voice-${activeChannel.name}`;
       
       console.log('🎤 Joining voice:', channelName);
+      console.log('👤 Current user ID:', user.id);
       
       const tokenData = await API.getAgoraRtcToken(channelName);
-      console.log('✅ Token received, UID:', tokenData.uid);
+      console.log('✅ Token received:', {
+        uid: tokenData.uid,
+        username: tokenData.username,
+        channelUsers: tokenData.channelUsers?.length || 0
+      });
 
-      // Cache all existing users from backend
+      // 🔥 DEBUG: Log all channel users
       if (tokenData.channelUsers?.length > 0) {
-        console.log(`📥 Caching ${tokenData.channelUsers.length} users`);
+        console.log('📊 Channel users:', tokenData.channelUsers.map(u => 
+          `${u.username} (UID: ${u.uid})`
+        ));
+        
+        // Cache all users from backend
         tokenData.channelUsers.forEach(u => {
           if (u.uid && u.username) {
             userCacheRef.current[u.uid] = u.username;
@@ -429,14 +485,23 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
         });
       }
       
-      if (!rtcClientRef.current) {
-        rtcClientRef.current = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+      // Clean up old client if exists
+      if (rtcClientRef.current) {
+        try {
+          await rtcClientRef.current.leave();
+          rtcClientRef.current.removeAllListeners();
+        } catch (e) {}
+        rtcClientRef.current = null;
       }
-
+      
+      // Create new client
+      rtcClientRef.current = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
       const client = rtcClientRef.current;
-      client.removeAllListeners();
+      
+      // Clear subscribed users set
+      subscribedUsersRef.current.clear();
 
-      // 🔥 FIXED: user-joined
+      // Event Handlers
       client.on('user-joined', async (remoteUser) => {
         console.log('👋 User joined:', remoteUser.uid);
         
@@ -452,40 +517,19 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
         });
       });
 
-      // 🔥 FIXED: user-published with deafen support
       client.on('user-published', async (remoteUser, mediaType) => {
         console.log('🎤 User published:', remoteUser.uid, mediaType);
         
         if (mediaType !== 'audio') return;
         
-        try {
-          await client.subscribe(remoteUser, mediaType);
-          remoteUser.audioTrack.play();
-          
-          // Apply deafen to new user if active
-          if (isDeafenedRef.current) {
-            remoteUser.audioTrack.setVolume(0);
-          }
-          
-          let username = userCacheRef.current[remoteUser.uid];
-          if (!username) {
-            username = await fetchUsernameByUid(remoteUser.uid);
-          }
-          
-          updateVoiceUser(remoteUser.uid, { 
-            username,
-            isMuted: false 
-          });
-          
-        } catch (error) {
-          console.error('Subscribe error:', error);
-        }
+        await forceSubscribeToUser(client, remoteUser);
       });
 
       client.on('user-unpublished', (remoteUser, mediaType) => {
         if (mediaType === 'audio') {
           console.log('🔇 User unpublished audio:', remoteUser.uid);
           updateVoiceUser(remoteUser.uid, { isMuted: true });
+          subscribedUsersRef.current.delete(remoteUser.uid);
         }
       });
 
@@ -504,11 +548,14 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
 
       // Join channel
       const uid = await client.join(tokenData.appId, channelName, tokenData.token, tokenData.uid);
-      console.log('✅ Joined, UID:', uid);
+      console.log('✅ Joined with UID:', uid);
+      console.log('🔍 Remote users after join:', client.remoteUsers.map(u => 
+        `UID: ${u.uid}, HasAudio: ${u.hasAudio}`
+      ));
       
       setLocalUid(uid);
 
-      // Create audio track
+      // Create and publish audio track
       audioTrackRef.current = await AgoraRTC.createMicrophoneAudioTrack({
         encoderConfig: 'speech_standard',
         AEC: true, 
@@ -520,44 +567,11 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
       client.enableAudioVolumeIndicator();
       console.log('✅ Audio published');
 
-      // 🔥🔥🔥 CRITICAL FIX: Subscribe to ALL existing users
-      const subscribeToAllExistingUsers = async () => {
-        for (const remoteUser of client.remoteUsers) {
-          // If user has audio and we haven't subscribed yet
-          if (remoteUser.hasAudio) {
-            try {
-              console.log(`🔍 Subscribing to existing user ${remoteUser.uid}`);
-              await client.subscribe(remoteUser, 'audio');
-              remoteUser.audioTrack.play();
-              
-              // Apply deafen if active
-              if (isDeafenedRef.current) {
-                remoteUser.audioTrack.setVolume(0);
-              }
-              
-              let username = userCacheRef.current[remoteUser.uid];
-              if (!username) {
-                username = await fetchUsernameByUid(remoteUser.uid);
-              }
-              
-              updateVoiceUser(remoteUser.uid, {
-                username,
-                isMuted: false
-              });
-              
-            } catch (error) {
-              console.error(`Failed to subscribe to ${remoteUser.uid}:`, error);
-            }
-          }
-        }
-      };
-
-      // Subscribe to existing users immediately
-      await subscribeToAllExistingUsers();
+      // 🔥 KRİTİK: Tüm mevcut kullanıcılara subscribe ol
+      await subscribeToAllExistingUsers(client);
 
       // Build participant list
       const participants = [];
-      const addedUids = new Set();
       
       // 1. Add self
       const myUsername = tokenData.username || user.displayName || user.email.split('@')[0];
@@ -568,28 +582,9 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
         isMuted: false,
         isLocal: true 
       });
-      addedUids.add(uid);
 
-      // 2. Add backend users (skip self)
-      if (tokenData.channelUsers) {
-        for (const existingUser of tokenData.channelUsers) {
-          if (existingUser.uid === uid) continue;
-          
-          const username = existingUser.username || userCacheRef.current[existingUser.uid] || `User ${existingUser.uid}`;
-          participants.push({ 
-            uid: existingUser.uid, 
-            username, 
-            isMuted: !client.remoteUsers.some(u => u.uid === existingUser.uid && u.hasAudio),
-            isLocal: false 
-          });
-          addedUids.add(existingUser.uid);
-        }
-      }
-
-      // 3. Add remaining remote users
+      // 2. Add other users
       for (const remoteUser of client.remoteUsers) {
-        if (addedUids.has(remoteUser.uid)) continue;
-        
         let username = userCacheRef.current[remoteUser.uid];
         if (!username) {
           username = await fetchUsernameByUid(remoteUser.uid);
@@ -598,7 +593,7 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
         participants.push({ 
           uid: remoteUser.uid, 
           username, 
-          isMuted: !remoteUser.hasAudio,
+          isMuted: !remoteUser.hasAudio || !subscribedUsersRef.current.has(remoteUser.uid),
           isLocal: false 
         });
       }
@@ -610,16 +605,36 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
       setInVoiceCall(true);
       setConnectionState('CONNECTED');
 
+      // 🔥 PERİYODİK KONTROL: Her 2 saniyede bir kontrol et
+      const checkInterval = setInterval(async () => {
+        if (client && client.remoteUsers) {
+          for (const remoteUser of client.remoteUsers) {
+            if (remoteUser.hasAudio && !subscribedUsersRef.current.has(remoteUser.uid)) {
+              console.log(`🔄 Periodic check: Subscribing to ${remoteUser.uid}`);
+              await forceSubscribeToUser(client, remoteUser);
+            }
+          }
+        }
+      }, 2000);
+
+      // Clean up interval on leave
+      rtcClientRef.current._checkInterval = checkInterval;
+
     } catch (error) {
       console.error('❌ Voice call error:', error);
       alert('Sesli sohbete bağlanılamadı.');
       setConnectionState('DISCONNECTED');
-      leaveVoiceCall();
+      await leaveVoiceCall();
     }
-  }, [connectionState, activeChannel, user, fetchUsernameByUid, updateVoiceUser, removeVoiceUser]);
+  }, [connectionState, activeChannel, user, fetchUsernameByUid, updateVoiceUser, removeVoiceUser, forceSubscribeToUser, subscribeToAllExistingUsers]);
 
   const leaveVoiceCall = useCallback(async () => {
     try {
+      // Clear interval
+      if (rtcClientRef.current?._checkInterval) {
+        clearInterval(rtcClientRef.current._checkInterval);
+      }
+      
       if (audioTrackRef.current) {
         audioTrackRef.current.close();
         audioTrackRef.current = null;
@@ -629,6 +644,13 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
         rtcClientRef.current.removeAllListeners();
         await rtcClientRef.current.leave();
         rtcClientRef.current = null;
+      }
+      
+      // Try to notify server
+      if (activeChannel) {
+        try {
+          await API.leaveVoiceChannel(`voice-${activeChannel.name}`);
+        } catch (e) {}
       }
     } catch (e) {
       console.error('Leave error:', e);
@@ -640,10 +662,11 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
       setIsDeafened(false);
       setConnectionState('DISCONNECTED');
       setLocalUid(null);
+      subscribedUsersRef.current.clear();
     }
-  }, []);
+  }, [activeChannel]);
 
-  // 🔥 FIXED: Mute toggle with proper state update
+  // 🔥 GELİŞTİRİLMİŞ: Mute toggle
   const toggleMute = useCallback(async () => {
     if (!audioTrackRef.current || localUid === null) return;
     
@@ -662,7 +685,7 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
     }
   }, [isMuted, localUid, updateVoiceUser]);
 
-  // 🔥 FIXED: Deafen with proper volume control for all users
+  // 🔥 TAMAMEN YENİ: Sağırlaştırma (Deafen)
   const toggleDeafen = useCallback(() => {
     const newState = !isDeafened;
     setIsDeafened(newState);
@@ -671,19 +694,20 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
     console.log(`🔊 Deafen toggled: ${newState ? 'DEAFENED' : 'UNDEAFENED'}`);
     
     if (rtcClientRef.current) {
-      // Apply to ALL current remote users
+      // Tüm remote kullanıcılara uygula
       rtcClientRef.current.remoteUsers.forEach(user => {
         if (user.audioTrack) {
           user.audioTrack.setVolume(newState ? 0 : 100);
+          console.log(`🔊 Volume set to ${newState ? 0 : 100} for ${user.uid}`);
         }
       });
+      
+      // Local kullanıcıyı da sessize al (deafen ise)
+      if (audioTrackRef.current) {
+        audioTrackRef.current.setVolume(newState ? 0 : 100);
+      }
     }
-    
-    // Also update user list to show deafen state
-    if (localUid !== null) {
-      updateVoiceUser(localUid, { isDeafened: newState });
-    }
-  }, [isDeafened, localUid, updateVoiceUser]);
+  }, [isDeafened]);
 
   const groupedChannels = useMemo(() => {
     return channels.reduce((acc, channel) => {
