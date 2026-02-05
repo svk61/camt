@@ -7,11 +7,7 @@ import AssessmentView from './pages/AssessmentView';
 import ChatView from './pages/ChatView';
 import AdminPanel from './pages/AdminPanel';
 
-// Real API service
-// App.js - Fixed Agora RTM Integration
-// ... (LoginView, RegisterView imports remain same)
-
-// API Service (no changes)
+// API Service
 const API = {
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
   
@@ -119,9 +115,14 @@ const API = {
     return this.request(`/agora/rtc-token?channelName=${encodeURIComponent(channelName)}`);
   },
 
-  // 🔥 CRITICAL FIX: Added missing method for voice chat username fetching
   async getUsernameByUid(uid) {
     return this.request(`/agora/user/${uid}`);
+  },
+
+  async leaveVoiceChannel(channelName) {
+    return this.request(`/agora/channel/${encodeURIComponent(channelName)}/leave`, {
+      method: 'POST'
+    });
   },
 
   async getAssessmentResults() {
@@ -129,7 +130,7 @@ const API = {
   }
 };
 
-// RTC Wrapper (no changes)
+// RTC Wrapper
 const AgoraRTCWrapper = {
   createClient: (config) => {
     console.log('Creating Agora RTC client with config:', config);
@@ -142,7 +143,7 @@ const AgoraRTCWrapper = {
   }
 };
 
-// ⚠️ FIXED RTM Wrapper
+// RTM Wrapper
 const AgoraRTMWrapper = {
   client: null,
   channel: null,
@@ -157,22 +158,17 @@ const AgoraRTMWrapper = {
       console.log('📋 AppId:', appId);
       console.log('📋 UserId:', userId);
       console.log('📋 Token length:', token?.length);
-      console.log('📋 Token preview:', token?.substring(0, 50) + '...');
       
-      // Eğer zaten initialize edilmişse, önce logout yap
       if (this.client && this.isInitialized) {
         console.log('🔄 RTM zaten aktif, yeniden başlatılıyor...');
         await this.logout();
       }
       
-      // ⚠️ CRITICAL: createInstance ile client oluştur
       this.client = AgoraRTM.createInstance(appId);
       this.currentUserId = userId;
       
       console.log('✅ RTM client oluşturuldu');
       
-      // ⚠️ CRITICAL: Login için doğru format
-      // Option 1: Object format (recommended)
       await this.client.login({ 
         token: token, 
         uid: userId 
@@ -182,7 +178,6 @@ const AgoraRTMWrapper = {
       
       this.isInitialized = true;
       
-      // Connection state listener
       this.client.on('ConnectionStateChanged', (newState, reason) => {
         console.log('🔔 RTM Connection State:', newState, 'Reason:', reason);
       });
@@ -206,21 +201,18 @@ const AgoraRTMWrapper = {
     try {
       console.log('🔹 Joining RTM channel:', channelName);
       
-      // Eğer başka bir kanalda ise önce ayrıl
       if (this.channel && this.isChannelJoined) {
         console.log('🔄 Mevcut kanaldan ayrılınıyor...');
         await this.channel.leave();
         this.isChannelJoined = false;
       }
       
-      // Yeni kanal oluştur ve katıl
       this.channel = this.client.createChannel(channelName);
       await this.channel.join();
       this.isChannelJoined = true;
       
       console.log('✅ RTM kanala katıldı:', channelName);
       
-      // Set up message listener
       this.channel.on('ChannelMessage', (message, memberId) => {
         console.log('📨 RTM mesajı alındı:', message.text, 'from:', memberId);
         if (this.messageCallback) {
@@ -232,7 +224,6 @@ const AgoraRTMWrapper = {
         }
       });
       
-      // Member joined/left listeners
       this.channel.on('MemberJoined', (memberId) => {
         console.log('👤 Member joined:', memberId);
       });
@@ -251,12 +242,7 @@ const AgoraRTMWrapper = {
   
   async sendMessage(text) {
     if (!this.isChannelJoined || !this.channel) {
-      console.error('❌ No active RTM channel! Current state:', {
-        isInitialized: this.isInitialized,
-        isChannelJoined: this.isChannelJoined,
-        hasClient: !!this.client,
-        hasChannel: !!this.channel
-      });
+      console.error('❌ No active RTM channel!');
       throw new Error('No active RTM channel');
     }
     
@@ -306,13 +292,16 @@ const AgoraRTMWrapper = {
 
 export { API, AgoraRTCWrapper as AgoraRTC, AgoraRTMWrapper as AgoraRTM };
 
-// App component (no changes needed)
+// ====================================
+// 🔥 FIXED APP COMPONENT
+// ====================================
 function App() {
   const [currentView, setCurrentView] = useState('login');
   const [user, setUser] = useState(null);
   const [channels, setChannels] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // Hash change handler
   useEffect(() => {
     const handleHashChange = () => {
       if (window.location.hash === '#register') {
@@ -329,35 +318,53 @@ function App() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
+  // 🔥 FIX 1: loadUserData artık async/await ile çalışıyor ve state'i güncelliyor
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token && currentView !== 'register') {
-      loadUserData();
-    } else {
-      setLoading(false);
-    }
-  }, []);
-
-  const loadUserData = async () => {
-    try {
-      const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
-      setUser(storedUser);
+    const initializeApp = async () => {
+      const token = localStorage.getItem('token');
       
-      if (storedUser.hasCompletedAssessment) {
-        const channelsData = await API.getChannels();
-        setChannels(channelsData);
-        setCurrentView('chat');
-      } else {
-        setCurrentView('assessment');
+      if (!token || currentView === 'register') {
+        setLoading(false);
+        return;
       }
-    } catch (error) {
-      console.error('Failed to load user data:', error);
-      localStorage.clear();
-      setCurrentView('login');
-    } finally {
-      setLoading(false);
-    }
-  };
+
+      try {
+        console.log('🔄 Kullanıcı verileri yükleniyor...');
+        
+        // Önce stored user'ı al
+        const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+        
+        if (!storedUser.id) {
+          throw new Error('No user data found');
+        }
+
+        console.log('✅ Kullanıcı bulundu:', storedUser.email);
+        setUser(storedUser);
+        
+        // Assessment tamamlanmışsa kanalları yükle
+        if (storedUser.hasCompletedAssessment) {
+          console.log('📡 Kanallar yükleniyor...');
+          const channelsData = await API.getChannels();
+          console.log('✅ Kanallar yüklendi:', channelsData.length);
+          
+          setChannels(channelsData);
+          setCurrentView('chat');
+        } else {
+          console.log('⚠️ Assessment henüz tamamlanmamış');
+          setCurrentView('assessment');
+        }
+        
+      } catch (error) {
+        console.error('❌ Kullanıcı verileri yüklenemedi:', error);
+        localStorage.clear();
+        setCurrentView('login');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initializeApp();
+  }, []); // 🔥 Sadece mount'ta çalışsın
 
   if (loading) {
     return (

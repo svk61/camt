@@ -1,4 +1,4 @@
-// ChatView.jsx - FINAL - Mobile Optimized + Fixed User Names
+// ChatView.jsx - FINAL - Multi-user voice chat FIXED
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Send, Hash, Settings, LogOut, Mic, MicOff, PhoneOff, Volume2, VolumeX, Menu, X, ChevronUp, ChevronDown, Signal } from 'lucide-react';
 import { API, AgoraRTC, AgoraRTM } from '../App';
@@ -150,7 +150,7 @@ const VoiceUserCard = React.memo(({ userId, username, isSpeaking, isMuted }) => 
 
 // 🔥 MOBILE OPTIMIZED Voice Bar
 function MobileVoiceBar({ isOpen, activeChannel, voiceUsers, isMuted, isDeafened, toggleMute, toggleDeafen, leaveVoiceCall }) {
-  const [expanded, setExpanded] = useState(false); // Default collapsed
+  const [expanded, setExpanded] = useState(false);
   
   if (!isOpen) return null;
 
@@ -161,7 +161,6 @@ function MobileVoiceBar({ isOpen, activeChannel, voiceUsers, isMuted, isDeafened
         paddingBottom: 'env(safe-area-inset-bottom)',
       }}
     >
-      {/* Mini Bar - Always Visible - Larger tap target */}
       <div 
         className="flex items-center justify-between px-4 py-4 cursor-pointer active:bg-gray-700/50 transition-colors" 
         onClick={() => setExpanded(!expanded)}
@@ -183,10 +182,8 @@ function MobileVoiceBar({ isOpen, activeChannel, voiceUsers, isMuted, isDeafened
         </button>
       </div>
 
-      {/* Expanded Controls */}
       {expanded && (
         <div className="px-4 pb-4 animate-slide-down">
-           {/* User List */}
            <div className="max-h-32 overflow-y-auto mb-4 bg-gray-900/50 rounded-lg p-2 space-y-1 scrollbar-thin scrollbar-thumb-gray-700">
              {voiceUsers.map(u => (
                <div key={u.uid} className="flex items-center gap-2 text-white text-sm p-2 rounded hover:bg-gray-700/50">
@@ -197,7 +194,6 @@ function MobileVoiceBar({ isOpen, activeChannel, voiceUsers, isMuted, isDeafened
              ))}
            </div>
            
-           {/* Control Buttons - Larger for mobile */}
            <div className="grid grid-cols-3 gap-3">
             <button 
               onClick={toggleMute}
@@ -394,7 +390,7 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
     return `Misafir ${String(uid).slice(-4)}`;
   }, []);
 
-  // 🔥 FIXED: Voice Call with realtime username lookup
+  // 🔥🔥🔥 COMPLETELY FIXED: Voice Call with backend channelUsers
   const joinVoiceCall = useCallback(async () => {
     if (connectionState === 'CONNECTING' || connectionState === 'CONNECTED') return;
     
@@ -402,14 +398,25 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
       setConnectionState('CONNECTING');
       const channelName = `voice-${activeChannel.name}`;
       
+      console.log('🎤 Sesli sohbete katılınıyor:', channelName);
+      
+      // 🎯 Get token and channelUsers from backend
       const tokenData = await API.getAgoraRtcToken(channelName);
       
-      // 🎯 Cache ALL users from backend
-      if (tokenData.channelUsers && tokenData.channelUsers.length > 0) {
-        console.log('📥 Caching channel users:', tokenData.channelUsers);
+      console.log('✅ Token alındı:', {
+        uid: tokenData.uid,
+        username: tokenData.username,
+        channelUsers: tokenData.channelUsers
+      });
+
+      // 🎯 CRITICAL: Cache ALL existing users BEFORE joining
+      if (tokenData.channelUsers && Array.isArray(tokenData.channelUsers)) {
+        console.log(`📥 ${tokenData.channelUsers.length} mevcut kullanıcı cache'leniyor...`);
         tokenData.channelUsers.forEach(u => {
-          userCacheRef.current[u.uid] = u.username;
-          console.log(`✅ Cached: UID ${u.uid} → ${u.username}`);
+          if (u.uid && u.username) {
+            userCacheRef.current[u.uid] = u.username;
+            console.log(`  ✓ ${u.username} (UID: ${u.uid})`);
+          }
         });
       }
       
@@ -420,23 +427,24 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
       const client = rtcClientRef.current;
       client.removeAllListeners();
 
-      // Event Listeners
+      // 🎯 Event Listeners
       client.on('user-published', async (remoteUser, mediaType) => {
-        console.log('🎤 User published:', remoteUser.uid, mediaType);
+        console.log('🎤 Kullanıcı yayın başlattı:', remoteUser.uid, mediaType);
         try {
           await client.subscribe(remoteUser, mediaType);
-          console.log('✅ Subscribed to user:', remoteUser.uid);
+          console.log('✅ Kullanıcıya abone olundu:', remoteUser.uid);
           
           if (mediaType === 'audio') {
             remoteUser.audioTrack.play();
             
-            // 🔥 FIX: Try to get username, fetch from backend if not cached
+            // 🔥 Get username from cache
             let username = userCacheRef.current[remoteUser.uid];
             if (!username) {
-              console.log('⚠️ Username not cached for UID:', remoteUser.uid, '- fetching from backend...');
+              console.warn('⚠️ Username cache\'de yok, backend\'den alınıyor:', remoteUser.uid);
               username = await fetchUsernameByUid(remoteUser.uid);
             }
             
+            console.log(`📢 ${username} (${remoteUser.uid}) ses yayınına başladı`);
             updateVoiceUser(remoteUser.uid, { isMuted: false, username });
           }
         } catch (error) {
@@ -445,27 +453,28 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
       });
 
       client.on('user-unpublished', (remoteUser, mediaType) => {
-        console.log('🔇 User unpublished:', remoteUser.uid, mediaType);
+        console.log('🔇 Kullanıcı yayını durdurdu:', remoteUser.uid, mediaType);
         if (mediaType === 'audio') {
           updateVoiceUser(remoteUser.uid, { isMuted: true });
         }
       });
 
       client.on('user-joined', async (remoteUser) => {
-        console.log('👋 User joined:', remoteUser.uid);
+        console.log('👋 Kullanıcı kanala katıldı:', remoteUser.uid);
         
-        // 🔥 FIX: Immediately fetch username from backend
+        // 🔥 Get username from cache or backend
         let username = userCacheRef.current[remoteUser.uid];
         if (!username) {
-          console.log('⚠️ Username not cached for joined user:', remoteUser.uid, '- fetching...');
+          console.warn('⚠️ Yeni kullanıcı için username backend\'den alınıyor:', remoteUser.uid);
           username = await fetchUsernameByUid(remoteUser.uid);
         }
         
+        console.log(`👤 ${username} (${remoteUser.uid}) listeye eklendi`);
         updateVoiceUser(remoteUser.uid, { isMuted: true, username });
       });
 
       client.on('user-left', (remoteUser) => {
-        console.log('👋 User left:', remoteUser.uid);
+        console.log('👋 Kullanıcı kanaldan ayrıldı:', remoteUser.uid);
         removeVoiceUser(remoteUser.uid);
       });
 
@@ -478,18 +487,18 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
       });
       
       client.on('connection-state-change', (curState, prevState) => {
-        console.log('Agora State:', prevState, '->', curState);
+        console.log('🔌 Bağlantı durumu:', prevState, '->', curState);
         setConnectionState(curState);
         if (curState === 'DISCONNECTED' && inVoiceCall) {
           leaveVoiceCall(); 
         }
       });
 
-      // Join channel
+      // 🎯 Join channel
       const uid = await client.join(tokenData.appId, channelName, tokenData.token, tokenData.uid);
-      console.log('✅ Joined channel with UID:', uid);
+      console.log('✅ Kanala katıldı, UID:', uid);
 
-      // Create and publish audio track
+      // 🎯 Create and publish audio track
       audioTrackRef.current = await AgoraRTC.createMicrophoneAudioTrack({
         encoderConfig: 'speech_standard',
         AEC: true, 
@@ -499,55 +508,82 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
       
       await client.publish([audioTrackRef.current]);
       client.enableAudioVolumeIndicator();
+      console.log('✅ Mikrofon yayını başlatıldı');
 
-      // Add self to list
+      // 🎯🎯🎯 CRITICAL: Build COMPLETE participant list
+      const initialParticipants = [];
+      
+      // 1. Add self first
       const myUsername = tokenData.username || user.displayName || user.email.split('@')[0];
       userCacheRef.current[uid] = myUsername;
-      
-      addVoiceUser({
+      initialParticipants.push({
         uid: uid,
         username: myUsername,
         isMuted: false,
         isLocal: true
       });
+      console.log(`✅ Ben eklendi: ${myUsername} (${uid})`);
 
-      // 🔥 Process existing remote users
+      // 2. Add all existing users from backend
+      if (tokenData.channelUsers && Array.isArray(tokenData.channelUsers)) {
+        for (const existingUser of tokenData.channelUsers) {
+          // Skip self
+          if (existingUser.uid === uid) continue;
+          
+          const username = existingUser.username || userCacheRef.current[existingUser.uid] || `User ${existingUser.uid}`;
+          initialParticipants.push({
+            uid: existingUser.uid,
+            username: username,
+            isMuted: true, // Will update when they publish
+            isLocal: false
+          });
+          console.log(`✅ Mevcut kullanıcı eklendi: ${username} (${existingUser.uid})`);
+        }
+      }
+
+      // 3. Wait a bit for Agora to sync, then add any remote users not in backend list
       await new Promise(resolve => setTimeout(resolve, 500));
       
-      console.log('👥 Processing existing remote users:', client.remoteUsers.length);
       for (const remoteUser of client.remoteUsers) {
-        console.log('Processing:', remoteUser.uid);
+        // Check if already added
+        if (initialParticipants.find(p => p.uid === remoteUser.uid)) {
+          console.log(`⚠️ ${remoteUser.uid} zaten listede`);
+          continue;
+        }
         
-        // Try to get username
         let username = userCacheRef.current[remoteUser.uid];
         if (!username) {
-          console.log('⚠️ Fetching username for existing user:', remoteUser.uid);
+          console.warn('⚠️ Remote user için username backend\'den alınıyor:', remoteUser.uid);
           username = await fetchUsernameByUid(remoteUser.uid);
         }
         
-        updateVoiceUser(remoteUser.uid, { 
+        initialParticipants.push({
+          uid: remoteUser.uid,
+          username: username,
           isMuted: !remoteUser.hasAudio,
-          username 
+          isLocal: false
         });
+        console.log(`✅ Remote user eklendi: ${username} (${remoteUser.uid})`);
         
+        // Subscribe if they have audio
         if (remoteUser.hasAudio && remoteUser.audioTrack) {
           try {
             await client.subscribe(remoteUser, 'audio');
             remoteUser.audioTrack.play();
-            console.log('✅ Subscribed to existing user:', remoteUser.uid);
-            updateVoiceUser(remoteUser.uid, { isMuted: false, username });
+            console.log(`✅ ${username} ses yayınına abone olundu`);
           } catch (error) {
-            console.error('Error subscribing to existing user:', remoteUser.uid, error);
+            console.error('Subscribe hatası:', remoteUser.uid, error);
           }
         }
       }
 
+      console.log(`🎉 Toplam ${initialParticipants.length} katılımcı:`, initialParticipants.map(p => `${p.username}(${p.uid})`).join(', '));
+      setVoiceUsers(initialParticipants);
       setInVoiceCall(true);
       setConnectionState('CONNECTED');
-      console.log('🎉 Voice call setup complete. Total users:', client.remoteUsers.length + 1);
 
     } catch (error) {
-      console.error('Ses bağlantı hatası:', error);
+      console.error('❌ Ses bağlantı hatası:', error);
       alert('Sesli sohbete bağlanılamadı. Lütfen mikrofon izinlerini kontrol edin.');
       setConnectionState('DISCONNECTED');
       leaveVoiceCall();
@@ -582,12 +618,11 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
     setVoiceUsers(prev => {
       const existing = prev.find(u => u.uid === uid);
       
-      // Use provided username or cached username
       let username = data.username || existing?.username || userCacheRef.current[uid];
       
       if (!username) {
         username = `Misafir ${String(uid).slice(-4)}`;
-        console.warn('⚠️ No username found for UID:', uid, '- using fallback');
+        console.warn('⚠️ Username bulunamadı:', uid);
       }
 
       if (existing) {
@@ -604,13 +639,6 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
       const next = new Set(prev);
       next.delete(uid);
       return next;
-    });
-  }, []);
-
-  const addVoiceUser = useCallback((userObj) => {
-    setVoiceUsers(prev => {
-       if (prev.find(u => u.uid === userObj.uid)) return prev;
-       return [...prev, userObj];
     });
   }, []);
 
@@ -761,7 +789,7 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
       {/* MAIN CHAT AREA */}
       <div className="flex-1 flex flex-col min-w-0 bg-gray-900 relative">
         
-        {/* Header - Fixed height */}
+        {/* Header */}
         <div className="h-16 border-b border-gray-700 flex items-center justify-between px-4 sm:px-6 bg-gray-800 shadow-sm z-10 flex-shrink-0">
           <div className="flex items-center min-w-0 flex-1">
             <button onClick={() => setSidebarOpen(true)} className="lg:hidden mr-3 text-gray-400 hover:text-white p-2">
@@ -797,14 +825,13 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
           )}
         </div>
 
-        {/* 🔥 MOBILE OPTIMIZED Messages - Dynamic height */}
+        {/* Messages */}
         <div 
           className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 custom-scrollbar scroll-smooth"
           style={{
-            // Dynamic height calculation
             height: inVoiceCall 
-              ? 'calc(100vh - 4rem - 5rem - 4rem)' // header - input - voice bar (collapsed)
-              : 'calc(100vh - 4rem - 5rem)', // header - input
+              ? 'calc(100vh - 4rem - 5rem - 4rem)'
+              : 'calc(100vh - 4rem - 5rem)',
             willChange: 'scroll-position',
           }}
         >
@@ -875,12 +902,12 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
           />
         )}
 
-        {/* 🔥 MOBILE OPTIMIZED Input - Fixed position with safe area */}
+        {/* Input */}
         <div 
           className="p-3 sm:p-4 bg-gray-800 border-t border-gray-700 flex-shrink-0"
           style={{
             paddingBottom: inVoiceCall 
-              ? 'calc(env(safe-area-inset-bottom) + 0.75rem)'  // Extra padding when voice bar present
+              ? 'calc(env(safe-area-inset-bottom) + 0.75rem)'
               : 'calc(env(safe-area-inset-bottom) + 0.75rem)',
           }}
         >
