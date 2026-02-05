@@ -6,8 +6,8 @@ import ChannelBrowser from './ChannelBrowser';
 import VoiceChat from './VoiceChat';
 
 // ========================================
-// 🔥 CRITICAL FIX: Removed all inline Agora code
-// Now using VoiceChat component properly
+// 🔥 FIXED: Voice chat integration only
+// All other features kept intact
 // ========================================
 
 function ChatView({ user, channels, onLogout, onProfileUpdate }) {
@@ -106,14 +106,25 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
     }
   };
 
-  // 🔥 SIMPLIFIED: Just open VoiceChat component
+  // 🔥 FIXED: Voice chat functions
   const joinVoiceCall = () => {
-    setVoiceChannel(`voice-${activeChannel.name}`);
+    const channelNameForVoice = `voice-${activeChannel.name}`;
+    setVoiceChannel(channelNameForVoice);
     setShowVoiceChat(true);
+    console.log('🎤 Joining voice channel:', channelNameForVoice);
   };
 
-  // 🔥 SIMPLIFIED: Just close VoiceChat component
-  const leaveVoiceCall = () => {
+  const leaveVoiceCall = async () => {
+    if (voiceChannel) {
+      try {
+        // Notify backend that user is leaving
+        await API.leaveVoiceChannel(voiceChannel);
+        console.log('👋 Left voice channel:', voiceChannel);
+      } catch (error) {
+        console.error('Failed to cleanup voice channel:', error);
+      }
+    }
+    
     setShowVoiceChat(false);
     setVoiceChannel(null);
   };
@@ -234,6 +245,7 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
                 <button
                   onClick={leaveVoiceCall}
                   className="p-2 rounded bg-red-600 hover:bg-red-700 transition"
+                  title="Leave Voice Chat"
                 >
                   <PhoneOff className="w-5 h-5 text-white" />
                 </button>
