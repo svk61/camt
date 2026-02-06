@@ -1,6 +1,5 @@
 // ChatView.jsx - FINAL - Mobile Optimized + Fixed User Names
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Send, Hash, Settings, LogOut, Mic, MicOff, PhoneOff, Volume2, VolumeX, Menu, X, ChevronUp, ChevronDown, Signal } from 'lucide-react';
 import { API, AgoraRTC, AgoraRTM } from '../App';
 import { Send, Hash, Settings, LogOut, Mic, MicOff, PhoneOff, Volume2, VolumeX, Menu, X, ChevronUp, ChevronDown, Signal, Star } from 'lucide-react';
 import RatingModal from './components/RatingModal';
