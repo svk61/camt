@@ -1,4 +1,4 @@
-// server.js - FINAL VERSION - All Issues Fixed
+// server.js - FINAL VERSION - All Issues Fixed + Ratings System
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -83,11 +83,21 @@ const AssessmentSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
+// 🌟 NEW: Rating Schema
+const RatingSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  rating: { type: Number, required: true, min: 1, max: 5 },
+  comment: { type: String, maxlength: 500 },
+  isAnonymous: { type: Boolean, default: true },
+  createdAt: { type: Date, default: Date.now }
+});
+
 const User = mongoose.model('User', UserSchema);
 const Channel = mongoose.model('Channel', ChannelSchema);
 const Message = mongoose.model('Message', MessageSchema);
 const Assessment = mongoose.model('Assessment', AssessmentSchema);
 const AssessmentResult = mongoose.model('AssessmentResult', AssessmentResultSchema);
+const Rating = mongoose.model('Rating', RatingSchema);
 
 // 🎯 CRITICAL FIX: Better voice users tracking with userId mapping
 const activeVoiceUsers = new Map(); // channelName -> Map(uid -> {username, userId, joinedAt})
@@ -202,6 +212,133 @@ async function getUsernameByUid(uid) {
 
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'healthy', timestamp: new Date().toISOString() });
+});
+
+// 🌟 NEW: Rating Routes
+
+// Submit a rating (authenticated users)
+app.post('/api/ratings', authMiddleware, async (req, res) => {
+  try {
+    const { rating, comment, isAnonymous } = req.body;
+    
+    if (!rating || rating < 1 || rating > 5) {
+      return res.status(400).json({ error: 'Geçerli bir puan seçiniz (1-5)' });
+    }
+    
+    // Check if user already rated
+    const existingRating = await Rating.findOne({ userId: req.user._id });
+    
+    if (existingRating) {
+      // Update existing rating
+      existingRating.rating = rating;
+      existingRating.comment = comment || '';
+      existingRating.isAnonymous = isAnonymous !== undefined ? isAnonymous : true;
+      existingRating.createdAt = new Date();
+      await existingRating.save();
+      
+      return res.json({ 
+        success: true, 
+        message: 'Değerlendirmeniz güncellendi',
+        rating: existingRating
+      });
+    }
+    
+    // Create new rating
+    const newRating = new Rating({
+      userId: req.user._id,
+      rating,
+      comment: comment || '',
+      isAnonymous: isAnonymous !== undefined ? isAnonymous : true
+    });
+    
+    await newRating.save();
+    
+    res.status(201).json({ 
+      success: true, 
+      message: 'Değerlendirmeniz kaydedildi',
+      rating: newRating
+    });
+  } catch (error) {
+    console.error('Rating submission error:', error);
+    res.status(500).json({ error: 'Değerlendirme gönderilemedi' });
+  }
+});
+
+// Get user's own rating
+app.get('/api/ratings/mine', authMiddleware, async (req, res) => {
+  try {
+    const rating = await Rating.findOne({ userId: req.user._id });
+    res.json(rating || null);
+  } catch (error) {
+    console.error('Get user rating error:', error);
+    res.status(500).json({ error: 'Değerlendirme getirilemedi' });
+  }
+});
+
+// Admin: Get all ratings
+app.get('/api/ratings', adminMiddleware, async (req, res) => {
+  try {
+    const ratings = await Rating.find()
+      .sort({ createdAt: -1 })
+      .populate('userId', 'email displayName');
+    
+    const formattedRatings = ratings.map(r => ({
+      id: r._id,
+      rating: r.rating,
+      comment: r.comment,
+      isAnonymous: r.isAnonymous,
+      username: r.isAnonymous ? 'Anonim Kullanıcı' : (r.userId?.displayName || r.userId?.email || 'Kullanıcı'),
+      createdAt: r.createdAt
+    }));
+    
+    res.json(formattedRatings);
+  } catch (error) {
+    console.error('Get ratings error:', error);
+    res.status(500).json({ error: 'Değerlendirmeler getirilemedi' });
+  }
+});
+
+// Admin: Get rating statistics
+app.get('/api/ratings/stats', adminMiddleware, async (req, res) => {
+  try {
+    const ratings = await Rating.find();
+    
+    const totalRatings = ratings.length;
+    const avgRating = totalRatings > 0 
+      ? (ratings.reduce((sum, r) => sum + r.rating, 0) / totalRatings).toFixed(2)
+      : 0;
+    
+    const ratingDistribution = {
+      5: ratings.filter(r => r.rating === 5).length,
+      4: ratings.filter(r => r.rating === 4).length,
+      3: ratings.filter(r => r.rating === 3).length,
+      2: ratings.filter(r => r.rating === 2).length,
+      1: ratings.filter(r => r.rating === 1).length
+    };
+    
+    const withComments = ratings.filter(r => r.comment && r.comment.trim().length > 0).length;
+    
+    res.json({
+      totalRatings,
+      avgRating,
+      ratingDistribution,
+      withComments
+    });
+  } catch (error) {
+    console.error('Get rating stats error:', error);
+    res.status(500).json({ error: 'İstatistikler getirilemedi' });
+  }
+});
+
+// Admin: Delete a rating
+app.delete('/api/ratings/:id', adminMiddleware, async (req, res) => {
+  try {
+    await Rating.findByIdAndDelete(req.params.id);
+    res.json({ success: true, message: 'Değerlendirme silindi' });
+  } catch (error) {
+    console.error('Delete rating error:', error);
+    res.status(500).json({ error: 'Değerlendirme silinemedi' });
+  }
 });
 
 app.get('/api/assessment/results', adminMiddleware, async (req, res) => {
