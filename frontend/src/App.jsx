@@ -7,15 +7,20 @@ import AssessmentView from './pages/AssessmentView';
 import ChatView from './pages/ChatView';
 import AdminPanel from './pages/AdminPanel';
 
-// API Service
+// Real API service
+// App.js - Fixed Agora RTM Integration
+// ... (LoginView, RegisterView imports remain same)
+
+// API Service (no changes)
 const API = {
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhosst:5000/api',
   
   getToken() {
     return localStorage.getItem('token');
   },
   
   async request(endpoint, options = {}) {
+    console.log('All env:', import.meta.env);
     const token = this.getToken();
     const headers = {
       'Content-Type': 'application/json',
@@ -44,7 +49,101 @@ const API = {
       throw error;
     }
   },
+  submitRating: async (rating, comment, isAnonymous = true) => {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_URL}/api/ratings`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ rating, comment, isAnonymous })
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Rating submission failed');
+    }
+    
+    return response.json();
+  },
   
+  getMyRating: async () => {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_URL}/api/ratings/mine`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to fetch rating');
+    }
+    
+    return response.json();
+  },
+  
+  // Admin endpoints
+  getAllRatings: async () => {
+    const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
+    const response = await fetch(`${API_URL}/api/ratings`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to fetch ratings');
+    }
+    
+    return response.json();
+  },
+  
+  getRatingStats: async () => {
+    const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
+    const response = await fetch(`${API_URL}/api/ratings/stats`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to fetch rating stats');
+    }
+    
+    return response.json();
+  },
+  
+  deleteRating: async (ratingId) => {
+    const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
+    const response = await fetch(`${API_URL}/api/ratings/${ratingId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to delete rating');
+    }
+    
+    return response.json();
+  },
+  
+  getUsernameByUid: async (uid) => {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_URL}/api/agora/user/${uid}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to get username');
+    }
+    
+    return response.json();
+  },
   async register(email, password, additionalData) {
     return this.request('/auth/register', {
       method: 'POST',
@@ -114,76 +213,74 @@ const API = {
     return this.request(`/agora/rtc-token?channelName=${encodeURIComponent(channelName)}`);
   },
 
-  async getUsernameByUid(uid) {
-    return this.request(`/agora/user/${uid}`);
-  },
-
-  async leaveVoiceChannel(channelName) {
-    return this.request(`/agora/channel/${encodeURIComponent(channelName)}/leave`, {
-      method: 'POST'
-    });
-  },
-
   async getAssessmentResults() {
     return this.request('/assessment/results');
   }
 };
 
-// RTC Wrapper
+// RTC Wrapper (no changes)
 const AgoraRTCWrapper = {
   createClient: (config) => {
+    console.log('Creating Agora RTC client with config:', config);
     return AgoraRTC.createClient(config);
   },
   
   createMicrophoneAudioTrack: async (config) => {
+    console.log('Creating microphone audio track with config:', config);
     return await AgoraRTC.createMicrophoneAudioTrack(config);
   }
 };
 
-// 🔥🔥🔥 COMPLETELY FIXED RTM Wrapper - Singleton pattern
+// ⚠️ FIXED RTM Wrapper
 const AgoraRTMWrapper = {
   client: null,
-  channels: new Map(), // channelName -> channel object
-  messageCallbacks: new Map(), // channelName -> callback
+  channel: null,
+  messageCallback: null,
   isInitialized: false,
+  isChannelJoined: false,
   currentUserId: null,
-  currentAppId: null,
   
   async initialize(appId, userId, token) {
     try {
-      // 🔥 CRITICAL: Eğer zaten aynı kullanıcı ile login ise skip et
-      if (this.client && this.isInitialized && this.currentUserId === userId) {
-        console.log('✅ RTM zaten aktif (UserId:', userId, ')');
-        return true;
-      }
+      console.log('🔹 RTM Initialize başlıyor...');
+      console.log('📋 AppId:', appId);
+      console.log('📋 UserId:', userId);
+      console.log('📋 Token length:', token?.length);
+      console.log('📋 Token preview:', token?.substring(0, 50) + '...');
       
-      console.log('🔹 RTM Initialize:', userId);
-      
-      // Farklı kullanıcı ise önce logout yap
+      // Eğer zaten initialize edilmişse, önce logout yap
       if (this.client && this.isInitialized) {
-        console.log('🔄 Önceki RTM session temizleniyor...');
+        console.log('🔄 RTM zaten aktif, yeniden başlatılıyor...');
         await this.logout();
       }
       
+      // ⚠️ CRITICAL: createInstance ile client oluştur
       this.client = AgoraRTM.createInstance(appId);
       this.currentUserId = userId;
-      this.currentAppId = appId;
       
+      console.log('✅ RTM client oluşturuldu');
+      
+      // ⚠️ CRITICAL: Login için doğru format
+      // Option 1: Object format (recommended)
       await this.client.login({ 
         token: token, 
         uid: userId 
       });
       
-      console.log('✅ RTM login:', userId);
+      console.log('✅ RTM login başarılı:', userId);
+      
       this.isInitialized = true;
       
+      // Connection state listener
       this.client.on('ConnectionStateChanged', (newState, reason) => {
-        console.log('🔔 RTM State:', newState, reason);
+        console.log('🔔 RTM Connection State:', newState, 'Reason:', reason);
       });
       
       return true;
     } catch (error) {
-      console.error('❌ RTM init failed:', error.message);
+      console.error('❌ RTM initialization failed:', error);
+      console.error('Error code:', error.code);
+      console.error('Error message:', error.message);
       this.isInitialized = false;
       return false;
     }
@@ -191,30 +288,32 @@ const AgoraRTMWrapper = {
   
   async joinChannel(channelName) {
     if (!this.isInitialized || !this.client) {
-      console.error('❌ RTM not initialized');
+      console.error('❌ RTM not initialized! Call initialize() first.');
       throw new Error('RTM not initialized');
     }
     
     try {
-      // 🔥 CRITICAL: Eğer aynı kanalda ise skip et
-      if (this.channels.has(channelName)) {
-        console.log('✅ Zaten kanaldayız:', channelName);
-        return true;
+      console.log('🔹 Joining RTM channel:', channelName);
+      
+      // Eğer başka bir kanalda ise önce ayrıl
+      if (this.channel && this.isChannelJoined) {
+        console.log('🔄 Mevcut kanaldan ayrılınıyor...');
+        await this.channel.leave();
+        this.isChannelJoined = false;
       }
       
-      console.log('🔹 RTM channel join:', channelName);
+      // Yeni kanal oluştur ve katıl
+      this.channel = this.client.createChannel(channelName);
+      await this.channel.join();
+      this.isChannelJoined = true;
       
-      const channel = this.client.createChannel(channelName);
-      await channel.join();
+      console.log('✅ RTM kanala katıldı:', channelName);
       
-      this.channels.set(channelName, channel);
-      console.log('✅ RTM joined:', channelName);
-      
-      // Message listener
-      channel.on('ChannelMessage', (message, memberId) => {
-        const callback = this.messageCallbacks.get(channelName);
-        if (callback) {
-          callback({
+      // Set up message listener
+      this.channel.on('ChannelMessage', (message, memberId) => {
+        console.log('📨 RTM mesajı alındı:', message.text, 'from:', memberId);
+        if (this.messageCallback) {
+          this.messageCallback({
             text: message.text,
             userId: memberId,
             timestamp: new Date().toISOString()
@@ -222,85 +321,87 @@ const AgoraRTMWrapper = {
         }
       });
       
+      // Member joined/left listeners
+      this.channel.on('MemberJoined', (memberId) => {
+        console.log('👤 Member joined:', memberId);
+      });
+      
+      this.channel.on('MemberLeft', (memberId) => {
+        console.log('👋 Member left:', memberId);
+      });
+      
       return true;
     } catch (error) {
-      console.error('❌ RTM join failed:', error.message);
+      console.error('❌ Failed to join RTM channel:', error);
+      this.isChannelJoined = false;
       throw error;
     }
   },
   
-  async sendMessage(channelName, text) {
-    const channel = this.channels.get(channelName);
-    
-    if (!channel) {
-      console.error('❌ No active channel:', channelName);
-      throw new Error('No active channel');
+  async sendMessage(text) {
+    if (!this.isChannelJoined || !this.channel) {
+      console.error('❌ No active RTM channel! Current state:', {
+        isInitialized: this.isInitialized,
+        isChannelJoined: this.isChannelJoined,
+        hasClient: !!this.client,
+        hasChannel: !!this.channel
+      });
+      throw new Error('No active RTM channel');
     }
     
     try {
-      await channel.sendMessage({ text, messageType: 'TEXT' });
+      console.log('📤 Sending RTM message:', text);
+      await this.channel.sendMessage({ text, messageType: 'TEXT' });
+      console.log('✅ RTM mesaj gönderildi');
       return true;
     } catch (error) {
-      console.error('❌ RTM send failed:', error.message);
+      console.error('❌ Failed to send RTM message:', error);
       throw error;
     }
   },
   
-  onMessage(channelName, callback) {
-    this.messageCallbacks.set(channelName, callback);
+  onMessage(callback) {
+    this.messageCallback = callback;
   },
   
-  async leaveChannel(channelName) {
-    const channel = this.channels.get(channelName);
-    
-    if (channel) {
-      try {
-        await channel.leave();
-        this.channels.delete(channelName);
-        this.messageCallbacks.delete(channelName);
-        console.log('✅ Left RTM channel:', channelName);
-      } catch (error) {
-        console.error('❌ Leave failed:', error.message);
+  async leaveChannel() {
+    try {
+      if (this.channel && this.isChannelJoined) {
+        await this.channel.leave();
+        this.channel = null;
+        this.isChannelJoined = false;
+        console.log('✅ Left RTM channel');
       }
+    } catch (error) {
+      console.error('❌ Failed to leave RTM channel:', error);
     }
   },
   
   async logout() {
     try {
-      // Leave all channels
-      for (const [channelName, channel] of this.channels.entries()) {
-        try {
-          await channel.leave();
-        } catch (e) { /* ignore */ }
-      }
-      
-      this.channels.clear();
-      this.messageCallbacks.clear();
-      
+      await this.leaveChannel();
       if (this.client && this.isInitialized) {
         await this.client.logout();
         this.client = null;
+        this.isInitialized = false;
+        this.currentUserId = null;
+        console.log('✅ Logged out from RTM');
       }
-      
-      this.isInitialized = false;
-      this.currentUserId = null;
-      console.log('✅ RTM logout complete');
     } catch (error) {
-      console.error('❌ RTM logout error:', error.message);
+      console.error('❌ Failed to logout from RTM:', error);
     }
   }
 };
 
 export { API, AgoraRTCWrapper as AgoraRTC, AgoraRTMWrapper as AgoraRTM };
 
-// App component
+// App component (no changes needed)
 function App() {
   const [currentView, setCurrentView] = useState('login');
   const [user, setUser] = useState(null);
   const [channels, setChannels] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Hash change handler
   useEffect(() => {
     const handleHashChange = () => {
       if (window.location.hash === '#register') {
@@ -317,50 +418,35 @@ function App() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  // 🔥 FIXED: Proper initialization
   useEffect(() => {
-    const initializeApp = async () => {
-      const token = localStorage.getItem('token');
-      
-      if (!token || currentView === 'register') {
-        setLoading(false);
-        return;
-      }
-
-      try {
-        console.log('🔄 Uygulama başlatılıyor...');
-        
-        const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
-        
-        if (!storedUser.id) {
-          throw new Error('No user data');
-        }
-
-        console.log('✅ Kullanıcı:', storedUser.email);
-        setUser(storedUser);
-        
-        if (storedUser.hasCompletedAssessment) {
-          console.log('📡 Kanallar yükleniyor...');
-          const channelsData = await API.getChannels();
-          console.log('✅ Kanallar yüklendi:', channelsData.length);
-          
-          setChannels(channelsData);
-          setCurrentView('chat');
-        } else {
-          setCurrentView('assessment');
-        }
-        
-      } catch (error) {
-        console.error('❌ Init failed:', error);
-        localStorage.clear();
-        setCurrentView('login');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    initializeApp();
+    const token = localStorage.getItem('token');
+    if (token && currentView !== 'register') {
+      loadUserData();
+    } else {
+      setLoading(false);
+    }
   }, []);
+
+  const loadUserData = async () => {
+    try {
+      const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+      setUser(storedUser);
+      
+      if (storedUser.hasCompletedAssessment) {
+        const channelsData = await API.getChannels();
+        setChannels(channelsData);
+        setCurrentView('chat');
+      } else {
+        setCurrentView('assessment');
+      }
+    } catch (error) {
+      console.error('Failed to load user data:', error);
+      localStorage.clear();
+      setCurrentView('login');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -407,8 +493,8 @@ function App() {
           localStorage.setItem('user', JSON.stringify(updatedUser));
           setCurrentView('chat');
         } catch (error) {
-          console.error('Assessment submit failed:', error);
-          alert('Anket gönderimi başarısız.');
+          console.error('Failed to submit assessment:', error);
+          alert('Anket gönderimi başarısız. Lütfen tekrar deneyin.');
         }
       }}
     />;
