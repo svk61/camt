@@ -2,7 +2,8 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { API, AgoraRTC, AgoraRTM } from '../App';
 import { Send, Hash, Settings, LogOut, Mic, MicOff, PhoneOff, Volume2, VolumeX, Menu, X, ChevronUp, ChevronDown, Signal, Star } from 'lucide-react';
-import RatingModal from './components/RatingModal';
+import RatingModal from '../components/Ratingmodal';
+// --- Helper Components ---
 // --- Helper Components ---
 
 function ProfilePanel({ user, onClose, onUpdate }) {
