@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Trash2, Plus, X, MessageSquare, Users, Settings, BarChart3, Eye, Download, Filter, LogOut, Lock, Menu } from 'lucide-react';
+import { Trash2, Plus, X, MessageSquare, Users, Settings, BarChart3, Eye, Download, Filter, LogOut, Lock, Menu, Star } from 'lucide-react';
+// UnifiedAdminPanel-Ratings-Addition.jsx
+// Add this to your UnifiedAdminPanel.jsx
 
+// 1. Add to state (at the top with other state variables):
+const [ratingsStats, setRatingsStats] = useState(null);
+const [ratings, setRatings] = useState([]);
 const API_URL = import.meta.env.VITE_API_URL ;
 
 export default function UnifiedAdminPanel() {
@@ -119,7 +124,91 @@ const loadChannels = async (authToken = null) => {
     setChannels([]);
   }
 };
+const loadRatingsStats = async () => {
+  try {
+    const token = localStorage.getItem('adminToken');
+    console.log('Loading rating stats with token:', token ? 'Present' : 'Missing');
+    
+    const response = await fetch(`${API_URL}/api/ratings/stats`, {
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    console.log('Rating stats response status:', response.status);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    
+    const data = await response.json();
+    console.log('Rating stats loaded successfully');
+    setRatingsStats(data);
+  } catch (error) {
+    console.error('Rating stats yüklenemedi:', error.message);
+    setRatingsStats(null);
+  }
+};
 
+const loadRatings = async () => {
+  try {
+    setLoading(true);
+    const token = localStorage.getItem('adminToken');
+    console.log('Loading ratings with token:', token ? 'Present' : 'Missing');
+    
+    const response = await fetch(`${API_URL}/api/ratings`, {
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    console.log('Ratings response status:', response.status);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    
+    const data = await response.json();
+    console.log('Ratings loaded:', data.length);
+    setRatings(data);
+  } catch (error) {
+    console.error('Ratings yüklenemedi:', error);
+    setError('Değerlendirmeler yüklenirken bir hata oluştu: ' + error.message);
+  } finally {
+    setLoading(false);
+  }
+};
+
+const handleDeleteRating = async (ratingId) => {
+  if (!confirm('Bu değerlendirmeyi silmek istediğinize emin misiniz?')) {
+    return;
+  }
+  
+  try {
+    const token = localStorage.getItem('adminToken');
+    const response = await fetch(`${API_URL}/api/ratings/${ratingId}`, {
+      method: 'DELETE',
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (response.ok) {
+      await loadRatings();
+      await loadRatingsStats();
+      alert('Değerlendirme silindi');
+    } else {
+      const errorData = await response.json().catch(() => ({}));
+      alert('Değerlendirme silinemedi: ' + (errorData.error || 'Bilinmeyen hata'));
+    }
+  } catch (error) {
+    console.error('Delete rating error:', error);
+    alert('Değerlendirme silinemedi: ' + error.message);
+  }
+};
 // 2. handleAddChannel
 const handleAddChannel = async () => {
   try {
@@ -384,7 +473,22 @@ useEffect(() => {
     setInitializing(false);
   }
 }, []);
-
+useEffect(() => {
+  if (activeTab === 'results' && isAuthenticated) {
+    loadAssessmentResults();
+  }
+  if (activeTab === 'channels' && isAuthenticated) {
+    loadChannels().catch(err => console.log('Failed to load channels:', err.message));
+  }
+  if (activeTab === 'stats' && isAuthenticated && !stats) {
+    loadStats().catch(err => console.log('Failed to load stats:', err.message));
+  }
+  // 🌟 ADD THIS:
+  if (activeTab === 'ratings' && isAuthenticated) {
+    loadRatings();
+    loadRatingsStats();
+  }
+}, [activeTab, isAuthenticated]);
 // 10. İkinci useEffect (tab changes)
 useEffect(() => {
   if (activeTab === 'results' && isAuthenticated) {
@@ -850,6 +954,17 @@ useEffect(() => {
               <Users className="w-5 h-5" />
               <span>Anket Sonuçları</span>
             </button>
+          <button
+  onClick={() => setActiveTab('ratings')}
+  className={`flex items-center space-x-3 px-8 py-5 font-semibold transition-all whitespace-nowrap ${
+    activeTab === 'ratings'
+      ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg'
+      : 'text-purple-300 hover:bg-purple-500/10'
+  }`}
+>
+  <Star className="w-5 h-5" />
+  <span>Değerlendirmeler</span>
+</button>
           </div>
         </div>
 
@@ -1011,7 +1126,138 @@ useEffect(() => {
             )}
           </div>
         )}
+{activeTab === 'ratings' && (
+  <div className="space-y-8">
+    {/* Rating Stats */}
+    {ratingsStats && (
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="bg-gradient-to-br from-yellow-600/20 to-orange-600/20 backdrop-blur-xl rounded-2xl border border-yellow-500/30 p-8">
+          <div className="text-sm text-yellow-300 mb-2">Toplam Değerlendirme</div>
+          <div className="text-4xl font-bold text-white">{ratingsStats.totalRatings || 0}</div>
+        </div>
+        <div className="bg-gradient-to-br from-purple-600/20 to-pink-600/20 backdrop-blur-xl rounded-2xl border border-purple-500/30 p-8">
+          <div className="text-sm text-purple-300 mb-2">Ortalama Puan</div>
+          <div className="text-4xl font-bold text-white flex items-center gap-2">
+            {ratingsStats.avgRating || 0}
+            <Star className="w-6 h-6 text-yellow-400 fill-yellow-400" />
+          </div>
+        </div>
+        <div className="bg-gradient-to-br from-blue-600/20 to-cyan-600/20 backdrop-blur-xl rounded-2xl border border-blue-500/30 p-8">
+          <div className="text-sm text-blue-300 mb-2">Yorumlu</div>
+          <div className="text-4xl font-bold text-white">{ratingsStats.withComments || 0}</div>
+        </div>
+        <div className="bg-gradient-to-br from-green-600/20 to-emerald-600/20 backdrop-blur-xl rounded-2xl border border-green-500/30 p-8">
+          <div className="text-sm text-green-300 mb-2">5 Yıldız</div>
+          <div className="text-4xl font-bold text-white">{ratingsStats.ratingDistribution?.[5] || 0}</div>
+        </div>
+      </div>
+    )}
 
+    {/* Rating Distribution */}
+    {ratingsStats && (
+      <div className="bg-slate-800/30 backdrop-blur-xl rounded-2xl border border-purple-500/20 p-8">
+        <h3 className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400 mb-6">
+          Puan Dağılımı
+        </h3>
+        <div className="space-y-4">
+          {[5, 4, 3, 2, 1].map(star => {
+            const count = ratingsStats.ratingDistribution?.[star] || 0;
+            const percentage = ratingsStats.totalRatings > 0 
+              ? Math.round((count / ratingsStats.totalRatings) * 100) 
+              : 0;
+            
+            return (
+              <div key={star} className="flex items-center gap-4">
+                <div className="flex items-center gap-1 w-20">
+                  <span className="text-white font-semibold">{star}</span>
+                  <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" />
+                </div>
+                <div className="flex-1 bg-gray-700 rounded-full h-6 overflow-hidden">
+                  <div 
+                    className="h-full bg-gradient-to-r from-yellow-500 to-orange-500 transition-all duration-500"
+                    style={{ width: `${percentage}%` }}
+                  />
+                </div>
+                <div className="w-20 text-right">
+                  <span className="text-white font-semibold">{count}</span>
+                  <span className="text-gray-400 text-sm ml-2">({percentage}%)</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    )}
+
+    {/* Ratings List */}
+    <div className="bg-slate-800/30 backdrop-blur-xl rounded-2xl border border-purple-500/20 overflow-hidden">
+      <div className="p-6 border-b border-purple-500/20">
+        <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400">
+          Tüm Değerlendirmeler
+        </h2>
+      </div>
+
+      {loading ? (
+        <div className="text-center py-16">
+          <div className="inline-block w-12 h-12 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mb-4" />
+          <p className="text-purple-300">Yükleniyor...</p>
+        </div>
+      ) : ratings.length === 0 ? (
+        <div className="text-center py-16">
+          <Star className="w-16 h-16 text-purple-400/50 mx-auto mb-4" />
+          <p className="text-purple-300/70 mb-2">Henüz değerlendirme yapılmamış</p>
+        </div>
+      ) : (
+        <div className="divide-y divide-purple-500/10">
+          {ratings.map((rating) => (
+            <div key={rating.id} className="p-6 hover:bg-slate-700/30 transition-all">
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1">
+                    {[1, 2, 3, 4, 5].map(star => (
+                      <Star
+                        key={star}
+                        className={`w-5 h-5 ${
+                          star <= rating.rating
+                            ? 'text-yellow-400 fill-yellow-400'
+                            : 'text-gray-600'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                  <span className="text-white font-semibold">
+                    {rating.username}
+                  </span>
+                  {rating.isAnonymous && (
+                    <span className="px-2 py-1 text-xs bg-gray-700 text-gray-300 rounded-full">
+                      Anonim
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-gray-400">
+                    {new Date(rating.createdAt).toLocaleString('tr-TR')}
+                  </span>
+                  <button
+                    onClick={() => handleDeleteRating(rating.id)}
+                    className="p-2 text-red-400 hover:bg-red-500/20 rounded-lg transition-all"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+              {rating.comment && (
+                <p className="text-purple-200 bg-gray-900/50 rounded-lg p-4 mt-3">
+                  "{rating.comment}"
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  </div>
+)}
         {/* Stats Tab */}
         {activeTab === 'stats' && stats && (
           <div className="space-y-8">
