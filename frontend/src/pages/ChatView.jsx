@@ -116,7 +116,7 @@ function ProfilePanel({ user, onClose, onUpdate }) {
   );
 }
 
-const VoiceUserCard = React.memo(({ userId, username, isSpeaking, isMuted }) => {
+const VoiceUserCard = React.memo(({ userId, username, isSpeaking, isMuted, isDeafened }) => {
   return (
     <div className={`flex items-center gap-3 p-2 rounded-lg transition-all ${isSpeaking ? 'bg-gray-700/80 border-l-2 border-green-500' : 'hover:bg-gray-700/50'}`}>
       <div className="relative">
@@ -124,16 +124,19 @@ const VoiceUserCard = React.memo(({ userId, username, isSpeaking, isMuted }) => 
           }`}>
           {username?.[0]?.toUpperCase() || '?'}
         </div>
-        {isMuted && (
+        {/* Show mute or deafen icon */}
+        {(isMuted || isDeafened) && (
           <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center ring-2 ring-gray-800">
-            <MicOff size={10} className="text-white" />
+            {isDeafened ? <VolumeX size={10} className="text-white" /> : <MicOff size={10} className="text-white" />}
           </div>
         )}
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-white text-sm font-medium truncate leading-tight">{username}</p>
         <div className="flex items-center gap-1">
-          {isSpeaking ? (
+          {isDeafened ? (
+            <span className="text-red-400 text-xs">Sağır</span>
+          ) : isSpeaking ? (
             <span className="text-green-400 text-xs flex items-center gap-1 animate-pulse">
               <Signal size={10} /> Konuşuyor
             </span>
@@ -417,7 +420,8 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
 
     try {
       setConnectionState('CONNECTING');
-      const channelName = `voice-${activeChannel.name}`;
+      // Use a fixed voice channel name - separate from text channels
+      const channelName = 'sesli-sohbet-1';
 
       const tokenData = await API.getAgoraRtcToken(channelName);
 
@@ -500,7 +504,8 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
       client.on('volume-indicator', (volumes) => {
         const speaking = new Set();
         volumes.forEach(v => {
-          if (v.level > 5) speaking.add(v.uid);
+          // Increase threshold to 15 to avoid false positives
+          if (v.level > 15) speaking.add(v.uid);
         });
         setSpeakingUsers(speaking);
       });
@@ -725,6 +730,37 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+          {/* Voice Channels Section */}
+          <div className="mb-6">
+            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 px-2 flex items-center gap-1">
+              <Volume2 size={12} />
+              Sesli Kanallar
+            </h3>
+            <div className="space-y-0.5">
+              <button
+                onClick={() => {
+                  if (!inVoiceCall) {
+                    joinVoiceCall();
+                  }
+                }}
+                className={`w-full flex items-center px-3 py-2 rounded-lg transition-all duration-200 group ${inVoiceCall
+                  ? 'bg-green-600/20 text-green-400 border border-green-600/30'
+                  : 'text-gray-400 hover:bg-gray-700/50 hover:text-gray-200'
+                  }`}
+              >
+                <Volume2 size={18} className={`mr-2.5 flex-shrink-0 ${inVoiceCall ? 'text-green-400' : 'text-gray-500 group-hover:text-gray-400'}`} />
+                <span className="text-sm font-medium">sesli-sohbet-1</span>
+                {inVoiceCall && (
+                  <div className="ml-auto flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                    <span className="text-xs text-green-400">{voiceUsers.length}</span>
+                  </div>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Text Channels */}
           {Object.entries(groupedChannels).map(([category, categoryChannels]) => (
             <div key={category} className="mb-6">
               <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 px-2 flex items-center justify-between group cursor-pointer hover:text-gray-300">
@@ -761,7 +797,7 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
                 <Signal size={16} className="animate-pulse" />
                 <span className="text-xs font-bold uppercase tracking-wide">Ses Bağlantısı</span>
               </div>
-              <span className="text-xs text-gray-500 font-mono">{activeChannel?.name}</span>
+              <span className="text-xs text-gray-500 font-mono">sesli-sohbet-1</span>
             </div>
 
             <div className="p-2 max-h-48 overflow-y-auto space-y-1 custom-scrollbar">
@@ -772,6 +808,7 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
                   username={voiceUser.username}
                   isSpeaking={speakingUsers.has(voiceUser.uid)}
                   isMuted={voiceUser.isMuted}
+                  isDeafened={voiceUser.isLocal && isDeafened}
                 />
               ))}
             </div>

@@ -60,7 +60,7 @@ export default function UnifiedAdminPanel() {
     setError('');
 
     try {
-      const response = await fetch(`${API_URL}/api/auth/admin-login`, {
+      const response = await fetch(`${API_URL}/auth/admin-login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password })
@@ -98,7 +98,7 @@ export default function UnifiedAdminPanel() {
       const tokenToUse = authToken || token;
       console.log('Loading channels with token:', tokenToUse ? 'Present' : 'Missing');
 
-      const response = await fetch(`${API_URL}/api/channels/all`, {
+      const response = await fetch(`${API_URL}/channels/all`, {
         headers: {
           'Authorization': `Bearer ${tokenToUse}`,
           'Content-Type': 'application/json'
@@ -128,7 +128,7 @@ export default function UnifiedAdminPanel() {
       const token = localStorage.getItem('adminToken');
       console.log('Loading rating stats with token:', token ? 'Present' : 'Missing');
 
-      const response = await fetch(`${API_URL}/api/ratings/stats`, {
+      const response = await fetch(`${API_URL}/ratings/stats`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -156,7 +156,7 @@ export default function UnifiedAdminPanel() {
       const token = localStorage.getItem('adminToken');
       console.log('Loading ratings with token:', token ? 'Present' : 'Missing');
 
-      const response = await fetch(`${API_URL}/api/ratings`, {
+      const response = await fetch(`${API_URL}/ratings`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -187,7 +187,7 @@ export default function UnifiedAdminPanel() {
 
     try {
       const token = localStorage.getItem('adminToken');
-      const response = await fetch(`${API_URL}/api/ratings/${ratingId}`, {
+      const response = await fetch(`${API_URL}/ratings/${ratingId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -213,7 +213,7 @@ export default function UnifiedAdminPanel() {
     try {
       console.log('Adding channel with token:', token ? 'Present' : 'Missing');
 
-      const response = await fetch(`${API_URL}/api/channels`, {
+      const response = await fetch(`${API_URL}/channels`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -249,7 +249,7 @@ export default function UnifiedAdminPanel() {
         try {
           console.log('Deleting channel with token:', token ? 'Present' : 'Missing');
 
-          const response = await fetch(`${API_URL}/api/channels/${channelId}`, {
+          const response = await fetch(`${API_URL}/channels/${channelId}`, {
             method: 'DELETE',
             headers: {
               'Authorization': `Bearer ${token}`,
@@ -280,7 +280,7 @@ export default function UnifiedAdminPanel() {
     try {
       console.log('Loading messages with token:', token ? 'Present' : 'Missing');
 
-      const response = await fetch(`${API_URL}/api/channels/${channelId}/messages`, {
+      const response = await fetch(`${API_URL}/channels/${channelId}/messages`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -310,7 +310,7 @@ export default function UnifiedAdminPanel() {
     try {
       console.log('Deleting message with token:', token ? 'Present' : 'Missing');
 
-      const response = await fetch(`${API_URL}/api/channels/${channelId}/messages/${messageId}`, {
+      const response = await fetch(`${API_URL}/channels/${channelId}/messages/${messageId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -342,7 +342,7 @@ export default function UnifiedAdminPanel() {
         try {
           console.log('Clearing channel with token:', token ? 'Present' : 'Missing');
 
-          const response = await fetch(`${API_URL}/api/channels/${channelId}/messages`, {
+          const response = await fetch(`${API_URL}/channels/${channelId}/messages`, {
             method: 'DELETE',
             headers: {
               'Authorization': `Bearer ${token}`,
@@ -374,7 +374,7 @@ export default function UnifiedAdminPanel() {
       const tokenToUse = authToken || token;
       console.log('Loading stats with token:', tokenToUse ? 'Present' : 'Missing');
 
-      const response = await fetch(`${API_URL}/api/assessment/results/stats`, {
+      const response = await fetch(`${API_URL}/assessment/results/stats`, {
         headers: {
           'Authorization': `Bearer ${tokenToUse}`,
           'Content-Type': 'application/json'
@@ -405,7 +405,7 @@ export default function UnifiedAdminPanel() {
       setLoading(true);
       console.log('Loading assessment results with token:', token ? 'Present' : 'Missing');
 
-      const response = await fetch(`${API_URL}/api/assessment/results`, {
+      const response = await fetch(`${API_URL}/assessment/results`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -584,7 +584,7 @@ export default function UnifiedAdminPanel() {
         return;
       }
 
-      const response = await fetch(`${API_URL}/api/assessment/results`, {
+      const response = await fetch(`${API_URL}/assessment/results`, {
         headers: {
           'Authorization': `Bearer ${adminToken}`,
           'Content-Type': 'application/json'
@@ -896,8 +896,8 @@ export default function UnifiedAdminPanel() {
             <button
               onClick={() => setActiveTab('channels')}
               className={`flex items-center space-x-3 px-8 py-5 font-semibold transition-all whitespace-nowrap ${activeTab === 'channels'
-                  ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg'
-                  : 'text-purple-300 hover:bg-purple-500/10'
+                ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg'
+                : 'text-purple-300 hover:bg-purple-500/10'
                 }`}
             >
               <MessageSquare className="w-5 h-5" />
@@ -906,8 +906,8 @@ export default function UnifiedAdminPanel() {
             <button
               onClick={() => setActiveTab('messages')}
               className={`flex items-center space-x-3 px-8 py-5 font-semibold transition-all whitespace-nowrap ${activeTab === 'messages'
-                  ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg'
-                  : 'text-purple-300 hover:bg-purple-500/10'
+                ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg'
+                : 'text-purple-300 hover:bg-purple-500/10'
                 }`}
             >
               <Eye className="w-5 h-5" />
@@ -916,8 +916,8 @@ export default function UnifiedAdminPanel() {
             <button
               onClick={() => setActiveTab('stats')}
               className={`flex items-center space-x-3 px-8 py-5 font-semibold transition-all whitespace-nowrap ${activeTab === 'stats'
-                  ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg'
-                  : 'text-purple-300 hover:bg-purple-500/10'
+                ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg'
+                : 'text-purple-300 hover:bg-purple-500/10'
                 }`}
             >
               <BarChart3 className="w-5 h-5" />
@@ -926,8 +926,8 @@ export default function UnifiedAdminPanel() {
             <button
               onClick={() => setActiveTab('results')}
               className={`flex items-center space-x-3 px-8 py-5 font-semibold transition-all whitespace-nowrap ${activeTab === 'results'
-                  ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg'
-                  : 'text-purple-300 hover:bg-purple-500/10'
+                ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg'
+                : 'text-purple-300 hover:bg-purple-500/10'
                 }`}
             >
               <Users className="w-5 h-5" />
@@ -936,8 +936,8 @@ export default function UnifiedAdminPanel() {
             <button
               onClick={() => setActiveTab('ratings')}
               className={`flex items-center space-x-3 px-8 py-5 font-semibold transition-all whitespace-nowrap ${activeTab === 'ratings'
-                  ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg'
-                  : 'text-purple-300 hover:bg-purple-500/10'
+                ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg'
+                : 'text-purple-300 hover:bg-purple-500/10'
                 }`}
             >
               <Star className="w-5 h-5" />
@@ -1193,8 +1193,8 @@ export default function UnifiedAdminPanel() {
                               <Star
                                 key={star}
                                 className={`w-5 h-5 ${star <= rating.rating
-                                    ? 'text-yellow-400 fill-yellow-400'
-                                    : 'text-gray-600'
+                                  ? 'text-yellow-400 fill-yellow-400'
+                                  : 'text-gray-600'
                                   }`}
                               />
                             ))}
