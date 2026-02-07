@@ -505,10 +505,17 @@ function App() {
       user={user}
       onComplete={async (answers) => {
         try {
-          await API.submitAssessment(answers);
+          const result = await API.submitAssessment(answers);
           const channelsData = await API.getChannels();
           setChannels(channelsData);
-          const updatedUser = { ...user, hasCompletedAssessment: true };
+          // Include score and syndromeLevel from API response
+          const updatedUser = {
+            ...user,
+            hasCompletedAssessment: true,
+            assessmentScore: result.score,
+            syndromeLevel: result.syndromeLevel,
+            assignedChannels: result.assignedChannels
+          };
           setUser(updatedUser);
           localStorage.setItem('user', JSON.stringify(updatedUser));
           setCurrentView('chat');

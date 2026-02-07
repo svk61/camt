@@ -260,11 +260,14 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
 
   // Refs
   const messagesEndRef = useRef(null);
+  const messagesContainerRef = useRef(null);
   const rtcClientRef = useRef(null);
   const audioTrackRef = useRef(null);
   const messagePollingRef = useRef(null);
   const userCacheRef = useRef({});
   const lastMessageCountRef = useRef(0);
+  const isNearBottomRef = useRef(true);
+  const shouldScrollRef = useRef(true);
 
   // Channels update
   useEffect(() => {
@@ -309,10 +312,20 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
     };
   }, [activeChannel]);
 
-  // Auto-scroll
+  // Smart auto-scroll - only when near bottom or on initial load
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (shouldScrollRef.current && isNearBottomRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages]);
+
+  // Detect if user is near bottom of message list
+  const handleMessagesScroll = useCallback((e) => {
+    const container = e.target;
+    const threshold = 100; // pixels from bottom
+    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+    isNearBottomRef.current = isNearBottom;
+  }, []);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -942,6 +955,8 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
 
         {/* 🔥 MOBILE OPTIMIZED Messages - Dynamic height */}
         <div
+          ref={messagesContainerRef}
+          onScroll={handleMessagesScroll}
           className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 custom-scrollbar scroll-smooth"
           style={{
             // Dynamic height calculation
