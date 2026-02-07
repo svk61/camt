@@ -13,12 +13,12 @@ import AdminPanel from './pages/AdminPanel';
 
 // API Service (no changes)
 const API = {
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhosst:5000/api',
-  
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
+
   getToken() {
     return localStorage.getItem('token');
   },
-  
+
   async request(endpoint, options = {}) {
     console.log('All env:', import.meta.env);
     const token = this.getToken();
@@ -49,9 +49,9 @@ const API = {
       throw error;
     }
   },
-  submitRating: async (rating, comment, isAnonymous = true) => {
+  async submitRating(rating, comment, isAnonymous = true) {
     const token = localStorage.getItem('token');
-    const response = await fetch(`${API_URL}/api/ratings`, {
+    const response = await fetch(`${this.baseURL}/ratings`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -59,89 +59,89 @@ const API = {
       },
       body: JSON.stringify({ rating, comment, isAnonymous })
     });
-    
+
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.error || 'Rating submission failed');
     }
-    
+
     return response.json();
   },
-  
-  getMyRating: async () => {
+
+  async getMyRating() {
     const token = localStorage.getItem('token');
-    const response = await fetch(`${API_URL}/api/ratings/mine`, {
+    const response = await fetch(`${this.baseURL}/ratings/mine`, {
       headers: {
         'Authorization': `Bearer ${token}`
       }
     });
-    
+
     if (!response.ok) {
       throw new Error('Failed to fetch rating');
     }
-    
+
     return response.json();
   },
-  
+
   // Admin endpoints
-  getAllRatings: async () => {
+  async getAllRatings() {
     const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
-    const response = await fetch(`${API_URL}/api/ratings`, {
+    const response = await fetch(`${this.baseURL}/ratings`, {
       headers: {
         'Authorization': `Bearer ${token}`
       }
     });
-    
+
     if (!response.ok) {
       throw new Error('Failed to fetch ratings');
     }
-    
+
     return response.json();
   },
-  
-  getRatingStats: async () => {
+
+  async getRatingStats() {
     const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
-    const response = await fetch(`${API_URL}/api/ratings/stats`, {
+    const response = await fetch(`${this.baseURL}/ratings/stats`, {
       headers: {
         'Authorization': `Bearer ${token}`
       }
     });
-    
+
     if (!response.ok) {
       throw new Error('Failed to fetch rating stats');
     }
-    
+
     return response.json();
   },
-  
-  deleteRating: async (ratingId) => {
+
+  async deleteRating(ratingId) {
     const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
-    const response = await fetch(`${API_URL}/api/ratings/${ratingId}`, {
+    const response = await fetch(`${this.baseURL}/ratings/${ratingId}`, {
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${token}`
       }
     });
-    
+
     if (!response.ok) {
       throw new Error('Failed to delete rating');
     }
-    
+
     return response.json();
   },
-  
-  getUsernameByUid: async (uid) => {
+
+  async getUsernameByUid(uid) {
     const token = localStorage.getItem('token');
-    const response = await fetch(`${API_URL}/api/agora/user/${uid}`, {
+    const response = await fetch(`${this.baseURL}/agora/user/${uid}`, {
       headers: {
         'Authorization': `Bearer ${token}`
       }
     });
-    
+
     if (!response.ok) {
       throw new Error('Failed to get username');
     }
-    
+
     return response.json();
   },
   async register(email, password, additionalData) {
@@ -150,65 +150,65 @@ const API = {
       body: JSON.stringify({ email, password, ...additionalData })
     });
   },
-  
+
   async login(email, password) {
     return this.request('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password })
     });
   },
-  
+
   async getAssessment() {
     return this.request('/assessment');
   },
-  
+
   async submitAssessment(answers) {
     return this.request('/assessment/submit', {
       method: 'POST',
       body: JSON.stringify({ answers })
     });
   },
-  
+
   async getChannels() {
     return this.request('/channels');
   },
-  
+
   async getAllChannels() {
     return this.request('/channels/all');
   },
-  
+
   async searchChannels(query) {
     return this.request(`/channels/search?query=${encodeURIComponent(query)}`);
   },
-  
+
   async joinChannel(channelId) {
     return this.request(`/channels/${channelId}/join`, {
       method: 'POST'
     });
   },
-  
+
   async getMessages(channelId) {
     return this.request(`/channels/${channelId}/messages`);
   },
-  
+
   async sendMessage(channelId, text) {
     return this.request(`/channels/${channelId}/messages`, {
       method: 'POST',
       body: JSON.stringify({ text })
     });
   },
-  
+
   async updateProfile(data) {
     return this.request('/profile', {
       method: 'PUT',
       body: JSON.stringify(data)
     });
   },
-  
+
   async getAgoraToken() {
     return this.request('/agora/token');
   },
-  
+
   async getAgoraRtcToken(channelName) {
     return this.request(`/agora/rtc-token?channelName=${encodeURIComponent(channelName)}`);
   },
@@ -224,7 +224,7 @@ const AgoraRTCWrapper = {
     console.log('Creating Agora RTC client with config:', config);
     return AgoraRTC.createClient(config);
   },
-  
+
   createMicrophoneAudioTrack: async (config) => {
     console.log('Creating microphone audio track with config:', config);
     return await AgoraRTC.createMicrophoneAudioTrack(config);
@@ -239,7 +239,7 @@ const AgoraRTMWrapper = {
   isInitialized: false,
   isChannelJoined: false,
   currentUserId: null,
-  
+
   async initialize(appId, userId, token) {
     try {
       console.log('🔹 RTM Initialize başlıyor...');
@@ -247,35 +247,35 @@ const AgoraRTMWrapper = {
       console.log('📋 UserId:', userId);
       console.log('📋 Token length:', token?.length);
       console.log('📋 Token preview:', token?.substring(0, 50) + '...');
-      
+
       // Eğer zaten initialize edilmişse, önce logout yap
       if (this.client && this.isInitialized) {
         console.log('🔄 RTM zaten aktif, yeniden başlatılıyor...');
         await this.logout();
       }
-      
+
       // ⚠️ CRITICAL: createInstance ile client oluştur
       this.client = AgoraRTM.createInstance(appId);
       this.currentUserId = userId;
-      
+
       console.log('✅ RTM client oluşturuldu');
-      
+
       // ⚠️ CRITICAL: Login için doğru format
       // Option 1: Object format (recommended)
-      await this.client.login({ 
-        token: token, 
-        uid: userId 
+      await this.client.login({
+        token: token,
+        uid: userId
       });
-      
+
       console.log('✅ RTM login başarılı:', userId);
-      
+
       this.isInitialized = true;
-      
+
       // Connection state listener
       this.client.on('ConnectionStateChanged', (newState, reason) => {
         console.log('🔔 RTM Connection State:', newState, 'Reason:', reason);
       });
-      
+
       return true;
     } catch (error) {
       console.error('❌ RTM initialization failed:', error);
@@ -285,30 +285,30 @@ const AgoraRTMWrapper = {
       return false;
     }
   },
-  
+
   async joinChannel(channelName) {
     if (!this.isInitialized || !this.client) {
       console.error('❌ RTM not initialized! Call initialize() first.');
       throw new Error('RTM not initialized');
     }
-    
+
     try {
       console.log('🔹 Joining RTM channel:', channelName);
-      
+
       // Eğer başka bir kanalda ise önce ayrıl
       if (this.channel && this.isChannelJoined) {
         console.log('🔄 Mevcut kanaldan ayrılınıyor...');
         await this.channel.leave();
         this.isChannelJoined = false;
       }
-      
+
       // Yeni kanal oluştur ve katıl
       this.channel = this.client.createChannel(channelName);
       await this.channel.join();
       this.isChannelJoined = true;
-      
+
       console.log('✅ RTM kanala katıldı:', channelName);
-      
+
       // Set up message listener
       this.channel.on('ChannelMessage', (message, memberId) => {
         console.log('📨 RTM mesajı alındı:', message.text, 'from:', memberId);
@@ -320,16 +320,16 @@ const AgoraRTMWrapper = {
           });
         }
       });
-      
+
       // Member joined/left listeners
       this.channel.on('MemberJoined', (memberId) => {
         console.log('👤 Member joined:', memberId);
       });
-      
+
       this.channel.on('MemberLeft', (memberId) => {
         console.log('👋 Member left:', memberId);
       });
-      
+
       return true;
     } catch (error) {
       console.error('❌ Failed to join RTM channel:', error);
@@ -337,7 +337,7 @@ const AgoraRTMWrapper = {
       throw error;
     }
   },
-  
+
   async sendMessage(text) {
     if (!this.isChannelJoined || !this.channel) {
       console.error('❌ No active RTM channel! Current state:', {
@@ -348,7 +348,7 @@ const AgoraRTMWrapper = {
       });
       throw new Error('No active RTM channel');
     }
-    
+
     try {
       console.log('📤 Sending RTM message:', text);
       await this.channel.sendMessage({ text, messageType: 'TEXT' });
@@ -359,11 +359,11 @@ const AgoraRTMWrapper = {
       throw error;
     }
   },
-  
+
   onMessage(callback) {
     this.messageCallback = callback;
   },
-  
+
   async leaveChannel() {
     try {
       if (this.channel && this.isChannelJoined) {
@@ -376,7 +376,7 @@ const AgoraRTMWrapper = {
       console.error('❌ Failed to leave RTM channel:', error);
     }
   },
-  
+
   async logout() {
     try {
       await this.leaveChannel();
@@ -431,7 +431,7 @@ function App() {
     try {
       const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
       setUser(storedUser);
-      
+
       if (storedUser.hasCompletedAssessment) {
         const channelsData = await API.getChannels();
         setChannels(channelsData);
@@ -467,21 +467,21 @@ function App() {
   }
 
   if (currentView === 'register') {
-    return <RegisterView 
+    return <RegisterView
       onRegister={(userData) => {
         setUser(userData);
         window.location.hash = '';
         setCurrentView('assessment');
-      }} 
+      }}
       onBack={() => {
         window.location.hash = '';
         setCurrentView('login');
-      }} 
+      }}
     />;
   }
 
   if (currentView === 'assessment') {
-    return <AssessmentView 
+    return <AssessmentView
       user={user}
       onComplete={async (answers) => {
         try {
@@ -501,7 +501,7 @@ function App() {
   }
 
   if (currentView === 'chat') {
-    return <ChatView 
+    return <ChatView
       user={user}
       channels={channels}
       onLogout={() => {

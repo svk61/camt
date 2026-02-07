@@ -108,12 +108,12 @@ const authMiddleware = async (req, res, next) => {
   try {
     const token = req.header('Authorization')?.replace('Bearer ', '');
     if (!token) throw new Error();
-    
+
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
     const user = await User.findById(decoded.userId);
-    
+
     if (!user) throw new Error();
-    
+
     req.user = user;
     req.token = token;
     next();
@@ -129,9 +129,9 @@ const adminMiddleware = async (req, res, next) => {
     if (!token) {
       return res.status(401).json({ error: 'Token gereklidir' });
     }
-    
+
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
-    
+
     if (!decoded.adminAccess && !decoded.isAdmin) {
       if (decoded.userId) {
         const user = await User.findById(decoded.userId);
@@ -142,7 +142,7 @@ const adminMiddleware = async (req, res, next) => {
         return res.status(403).json({ error: 'Yönetici erişimi gereklidir' });
       }
     }
-    
+
     req.decoded = decoded;
     next();
   } catch (error) {
@@ -190,7 +190,7 @@ async function getUsernameByUid(uid) {
         return user.displayName || user.email.split('@')[0];
       }
     }
-    
+
     // Check in active voice users
     for (const [channel, users] of activeVoiceUsers.entries()) {
       const userData = users.get(uid);
@@ -198,7 +198,7 @@ async function getUsernameByUid(uid) {
         return userData.username;
       }
     }
-    
+
     return `Misafir ${String(uid).slice(-4)}`;
   } catch (error) {
     console.error('getUsernameByUid error:', error);
@@ -220,14 +220,14 @@ app.get('/health', (req, res) => {
 app.post('/api/ratings', authMiddleware, async (req, res) => {
   try {
     const { rating, comment, isAnonymous } = req.body;
-    
+
     if (!rating || rating < 1 || rating > 5) {
       return res.status(400).json({ error: 'Geçerli bir puan seçiniz (1-5)' });
     }
-    
+
     // Check if user already rated
     const existingRating = await Rating.findOne({ userId: req.user._id });
-    
+
     if (existingRating) {
       // Update existing rating
       existingRating.rating = rating;
@@ -235,14 +235,14 @@ app.post('/api/ratings', authMiddleware, async (req, res) => {
       existingRating.isAnonymous = isAnonymous !== undefined ? isAnonymous : true;
       existingRating.createdAt = new Date();
       await existingRating.save();
-      
-      return res.json({ 
-        success: true, 
+
+      return res.json({
+        success: true,
         message: 'Değerlendirmeniz güncellendi',
         rating: existingRating
       });
     }
-    
+
     // Create new rating
     const newRating = new Rating({
       userId: req.user._id,
@@ -250,11 +250,11 @@ app.post('/api/ratings', authMiddleware, async (req, res) => {
       comment: comment || '',
       isAnonymous: isAnonymous !== undefined ? isAnonymous : true
     });
-    
+
     await newRating.save();
-    
-    res.status(201).json({ 
-      success: true, 
+
+    res.status(201).json({
+      success: true,
       message: 'Değerlendirmeniz kaydedildi',
       rating: newRating
     });
@@ -281,7 +281,7 @@ app.get('/api/ratings', adminMiddleware, async (req, res) => {
     const ratings = await Rating.find()
       .sort({ createdAt: -1 })
       .populate('userId', 'email displayName');
-    
+
     const formattedRatings = ratings.map(r => ({
       id: r._id,
       rating: r.rating,
@@ -290,7 +290,7 @@ app.get('/api/ratings', adminMiddleware, async (req, res) => {
       username: r.isAnonymous ? 'Anonim Kullanıcı' : (r.userId?.displayName || r.userId?.email || 'Kullanıcı'),
       createdAt: r.createdAt
     }));
-    
+
     res.json(formattedRatings);
   } catch (error) {
     console.error('Get ratings error:', error);
@@ -302,12 +302,12 @@ app.get('/api/ratings', adminMiddleware, async (req, res) => {
 app.get('/api/ratings/stats', adminMiddleware, async (req, res) => {
   try {
     const ratings = await Rating.find();
-    
+
     const totalRatings = ratings.length;
-    const avgRating = totalRatings > 0 
+    const avgRating = totalRatings > 0
       ? (ratings.reduce((sum, r) => sum + r.rating, 0) / totalRatings).toFixed(2)
       : 0;
-    
+
     const ratingDistribution = {
       5: ratings.filter(r => r.rating === 5).length,
       4: ratings.filter(r => r.rating === 4).length,
@@ -315,9 +315,9 @@ app.get('/api/ratings/stats', adminMiddleware, async (req, res) => {
       2: ratings.filter(r => r.rating === 2).length,
       1: ratings.filter(r => r.rating === 1).length
     };
-    
+
     const withComments = ratings.filter(r => r.comment && r.comment.trim().length > 0).length;
-    
+
     res.json({
       totalRatings,
       avgRating,
@@ -346,7 +346,7 @@ app.get('/api/assessment/results', adminMiddleware, async (req, res) => {
     const results = await AssessmentResult.find()
       .select('gender age education score submittedAt answers')
       .sort({ submittedAt: -1 });
-    
+
     const formattedResults = results.map((result) => ({
       id: result._id,
       gender: result.gender,
@@ -357,7 +357,7 @@ app.get('/api/assessment/results', adminMiddleware, async (req, res) => {
       submittedAt: result.submittedAt,
       answers: result.answers || {}
     }));
-    
+
     res.json(formattedResults);
   } catch (error) {
     console.error('Fetch results error:', error);
@@ -368,31 +368,31 @@ app.get('/api/assessment/results', adminMiddleware, async (req, res) => {
 app.get('/api/assessment/results/stats', adminMiddleware, async (req, res) => {
   try {
     const results = await AssessmentResult.find();
-    
+
     const totalResults = results.length;
-    const avgScore = results.length > 0 
+    const avgScore = results.length > 0
       ? (results.reduce((sum, r) => sum + r.score, 0) / results.length).toFixed(2)
       : 0;
-    
+
     const scores = results.map(r => r.score);
     const highestScore = scores.length > 0 ? Math.max(...scores) : 0;
     const lowestScore = scores.length > 0 ? Math.min(...scores) : 0;
-    
+
     const ages = results.map(r => r.age || 0).filter(a => a > 0);
-    const avgAge = ages.length > 0 
+    const avgAge = ages.length > 0
       ? (ages.reduce((sum, a) => sum + a, 0) / ages.length).toFixed(1)
       : 0;
-    
+
     const genderDistribution = results.reduce((acc, r) => {
       acc[r.gender] = (acc[r.gender] || 0) + 1;
       return acc;
     }, {});
-    
+
     const educationDistribution = results.reduce((acc, r) => {
       acc[r.education] = (acc[r.education] || 0) + 1;
       return acc;
     }, {});
-    
+
     res.json({
       totalResults,
       avgScore,
@@ -411,18 +411,18 @@ app.get('/api/assessment/results/stats', adminMiddleware, async (req, res) => {
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { email, password, gender, age, education, school } = req.body;
-    
+
     if (!email || !password || !gender || !age || !education) {
       return res.status(400).json({ error: 'Tüm alanlar gereklidir' });
     }
-    
+
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ error: 'Bu e-mail zaten kayıtlı' });
     }
-    
+
     const hashedPassword = await bcrypt.hash(password, 10);
-    
+
     const user = new User({
       email,
       password: hashedPassword,
@@ -431,15 +431,15 @@ app.post('/api/auth/register', async (req, res) => {
       education,
       school: school || null
     });
-    
+
     await user.save();
-    
+
     const token = jwt.sign(
       { userId: user._id },
       process.env.JWT_SECRET || 'your-secret-key',
       { expiresIn: '7d' }
     );
-    
+
     res.status(201).json({
       token,
       user: {
@@ -462,23 +462,23 @@ app.post('/api/auth/register', async (req, res) => {
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-    
+
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(401).json({ error: 'Yanlış Kullanıcı adı veya şifre' });
     }
-    
+
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(401).json({ error: 'Yanlış Kullanıcı adı veya şifre' });
     }
-    
+
     const token = jwt.sign(
       { userId: user._id },
       process.env.JWT_SECRET || 'your-secret-key',
       { expiresIn: '7d' }
     );
-    
+
     res.json({
       token,
       user: {
@@ -497,29 +497,29 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || 
+const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH ||
   bcrypt.hashSync('admin123', 10);
 
 app.post('/api/auth/admin-login', async (req, res) => {
   try {
     const { password } = req.body;
-    
+
     if (!password) {
       return res.status(400).json({ error: 'Şifre gereklidir' });
     }
-    
+
     const isValid = await bcrypt.compare(password, ADMIN_PASSWORD_HASH);
-    
+
     if (!isValid) {
       return res.status(401).json({ error: 'Geçersiz şifre' });
     }
-    
+
     const token = jwt.sign(
       { isAdmin: true, adminAccess: true },
       process.env.JWT_SECRET || 'your-secret-key',
       { expiresIn: '24h' }
     );
-    
+
     res.json({
       token,
       isAdmin: true,
@@ -534,7 +534,7 @@ app.post('/api/auth/admin-login', async (req, res) => {
 app.get('/api/assessment', authMiddleware, async (req, res) => {
   try {
     let assessment = await Assessment.findOne().sort({ createdAt: -1 });
-    
+
     if (!assessment) {
       assessment = new Assessment({
         questions: [
@@ -560,7 +560,7 @@ app.get('/api/assessment', authMiddleware, async (req, res) => {
       });
       await assessment.save();
     }
-    
+
     res.json(assessment);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch assessment' });
@@ -570,9 +570,9 @@ app.get('/api/assessment', authMiddleware, async (req, res) => {
 app.post('/api/assessment/submit', authMiddleware, async (req, res) => {
   try {
     const { answers } = req.body;
-    
+
     const score = Object.values(answers).filter(answer => answer === 'yes').length;
-    
+
     const assessmentResult = new AssessmentResult({
       userId: req.user._id,
       answers,
@@ -581,9 +581,9 @@ app.post('/api/assessment/submit', authMiddleware, async (req, res) => {
       age: req.user.age,
       education: req.user.education
     });
-    
+
     await assessmentResult.save();
-    
+
     const updatedUser = await User.findByIdAndUpdate(
       req.user._id,
       {
@@ -596,12 +596,12 @@ app.post('/api/assessment/submit', authMiddleware, async (req, res) => {
       },
       { new: true }
     );
-    
+
     if (!updatedUser) {
       return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
     }
-    
-    res.json({ 
+
+    res.json({
       success: true,
       score,
       totalQuestions: 16,
@@ -616,10 +616,10 @@ app.post('/api/assessment/submit', authMiddleware, async (req, res) => {
 
 app.get('/api/channels', authMiddleware, async (req, res) => {
   try {
-    const query = req.user.isAdmin 
-      ? {} 
+    const query = req.user.isAdmin
+      ? {}
       : { name: { $in: req.user.assignedChannels || [] } };
-    
+
     const channels = await Channel.find(query);
     res.json(channels);
   } catch (error) {
@@ -630,11 +630,11 @@ app.get('/api/channels', authMiddleware, async (req, res) => {
 app.get('/api/channels/all', async (req, res) => {
   try {
     const token = req.header('Authorization')?.replace('Bearer ', '');
-    
+
     if (token) {
       try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
-        
+
         if (decoded.adminAccess || decoded.isAdmin) {
           const channels = await Channel.find({});
           return res.json(channels);
@@ -646,7 +646,7 @@ app.get('/api/channels/all', async (req, res) => {
         return res.json(channels);
       }
     }
-    
+
     const channels = await Channel.find({ isPublic: true });
     res.json(channels);
   } catch (error) {
@@ -658,20 +658,20 @@ app.get('/api/channels/all', async (req, res) => {
 app.post('/api/channels/:channelId/join', authMiddleware, async (req, res) => {
   try {
     const channel = await Channel.findById(req.params.channelId);
-    
+
     if (!channel) {
       return res.status(404).json({ error: 'Channel not found' });
     }
-    
+
     if (!channel.isPublic) {
       return res.status(403).json({ error: 'Channel is private' });
     }
-    
+
     if (!req.user.assignedChannels.includes(channel.name)) {
       req.user.assignedChannels.push(channel.name);
       await req.user.save();
     }
-    
+
     res.json({ success: true, channel });
   } catch (error) {
     res.status(500).json({ error: 'Failed to join channel' });
@@ -681,10 +681,10 @@ app.post('/api/channels/:channelId/join', authMiddleware, async (req, res) => {
 app.post('/api/channels', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { name, category, description, isPublic } = req.body;
-    
+
     const channel = new Channel({ name, category, description, isPublic });
     await channel.save();
-    
+
     res.status(201).json(channel);
   } catch (error) {
     res.status(500).json({ error: 'Failed to create channel' });
@@ -694,13 +694,13 @@ app.post('/api/channels', authMiddleware, adminMiddleware, async (req, res) => {
 app.put('/api/channels/:id', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { name, category, description } = req.body;
-    
+
     const channel = await Channel.findByIdAndUpdate(
       req.params.id,
       { name, category, description },
       { new: true }
     );
-    
+
     res.json(channel);
   } catch (error) {
     res.status(500).json({ error: 'Failed to update channel' });
@@ -721,7 +721,7 @@ app.get('/api/channels/:channelId/messages', authMiddleware, async (req, res) =>
     const messages = await Message.find({ channelId: req.params.channelId })
       .sort({ createdAt: 1 })
       .limit(100);
-    
+
     res.json(messages);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch messages' });
@@ -731,7 +731,7 @@ app.get('/api/channels/:channelId/messages', authMiddleware, async (req, res) =>
 app.post('/api/channels/:channelId/messages', authMiddleware, async (req, res) => {
   try {
     const { text } = req.body;
-    
+
     const message = new Message({
       channelId: req.params.channelId,
       userId: req.user._id,
@@ -739,9 +739,9 @@ app.post('/api/channels/:channelId/messages', authMiddleware, async (req, res) =
       text,
       isAnonymous: req.user.isAnonymous
     });
-    
+
     await message.save();
-    
+
     res.status(201).json({
       _id: message._id,
       channelId: message.channelId,
@@ -759,22 +759,22 @@ app.post('/api/channels/:channelId/messages', authMiddleware, async (req, res) =
 app.delete('/api/channels/:channelId/messages/:messageId', authMiddleware, async (req, res) => {
   try {
     const { channelId, messageId } = req.params;
-    
-    const message = await Message.findOne({ 
-      _id: messageId, 
-      channelId: channelId 
+
+    const message = await Message.findOne({
+      _id: messageId,
+      channelId: channelId
     });
-    
+
     if (!message) {
       return res.status(404).json({ error: 'Mesaj bulunamadı' });
     }
-    
+
     if (message.userId !== req.user._id.toString() && !req.user.isAdmin) {
       return res.status(403).json({ error: 'Bu mesajı silme yetkiniz yok' });
     }
-    
+
     await Message.findByIdAndDelete(messageId);
-    
+
     res.json({ success: true, message: 'Mesaj silindi' });
   } catch (error) {
     console.error('Mesaj silme hatası:', error);
@@ -785,11 +785,11 @@ app.delete('/api/channels/:channelId/messages/:messageId', authMiddleware, async
 app.delete('/api/channels/:channelId/messages', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { channelId } = req.params;
-    
+
     const result = await Message.deleteMany({ channelId: channelId });
-    
-    res.json({ 
-      success: true, 
+
+    res.json({
+      success: true,
       message: `${result.deletedCount} mesaj silindi`,
       deletedCount: result.deletedCount
     });
@@ -829,12 +829,12 @@ app.get('/api/profile', authMiddleware, async (req, res) => {
 app.put('/api/profile', authMiddleware, async (req, res) => {
   try {
     const { displayName, bio, isAnonymous } = req.body;
-    
+
     req.user.displayName = displayName;
     req.user.bio = bio;
     req.user.isAnonymous = isAnonymous;
     await req.user.save();
-    
+
     res.json({
       id: req.user._id,
       email: req.user.email,
@@ -850,10 +850,10 @@ app.put('/api/profile', authMiddleware, async (req, res) => {
 app.put('/api/admin/assessment', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { questions } = req.body;
-    
+
     const assessment = new Assessment({ questions });
     await assessment.save();
-    
+
     res.json(assessment);
   } catch (error) {
     res.status(500).json({ error: 'Failed to update assessment' });
@@ -868,13 +868,13 @@ app.get('/api/agora/token', authenticateToken, async (req, res) => {
   try {
     const AGORA_APP_ID = process.env.AGORA_APP_ID;
     const AGORA_APP_CERTIFICATE = process.env.AGORA_APP_CERTIFICATE;
-    
+
     if (!AGORA_APP_ID || !AGORA_APP_CERTIFICATE) {
       return res.status(500).json({ error: 'Agora credentials not configured' });
     }
 
     const userId = req.user.userId.toString();
-    
+
     const currentTimestamp = Math.floor(Date.now() / 1000);
     const expirationTimeInSeconds = 3600 * 24;
     const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
@@ -898,9 +898,9 @@ app.get('/api/agora/token', authenticateToken, async (req, res) => {
 
   } catch (error) {
     console.error('❌ RTM Token error:', error);
-    res.status(500).json({ 
-      error: 'Failed to generate RTM token', 
-      details: error.message 
+    res.status(500).json({
+      error: 'Failed to generate RTM token',
+      details: error.message
     });
   }
 });
@@ -909,7 +909,7 @@ app.get('/api/agora/token', authenticateToken, async (req, res) => {
 app.get('/api/agora/rtc-token', authenticateToken, async (req, res) => {
   try {
     const { channelName } = req.query;
-    
+
     if (!channelName) {
       return res.status(400).json({ error: 'Channel name is required' });
     }
@@ -925,12 +925,21 @@ app.get('/api/agora/rtc-token', authenticateToken, async (req, res) => {
     const currentTimestamp = Math.floor(Date.now() / 1000);
     const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
 
-    // Generate UID
+    // Generate UID - MongoDB ObjectId must use hashCode
+    // Note: parseInt("679abc...") incorrectly returns 679, not NaN
     let uid = 0;
-    if (req.user.userId && !isNaN(parseInt(req.user.userId))) {
-      uid = parseInt(req.user.userId);
+    const userIdStr = req.user.userId.toString();
+
+    // Only use parseInt if userId is purely numeric (e.g., "12345")
+    if (/^\d+$/.test(userIdStr)) {
+      uid = parseInt(userIdStr, 10);
+      // Ensure UID fits in 32-bit integer for Agora
+      if (uid > 0xFFFFFFFF) {
+        uid = uid % 0xFFFFFFFF;
+      }
     } else {
-      uid = hashCode(req.user.userId.toString());
+      // MongoDB ObjectId or other non-numeric ID - use hash
+      uid = hashCode(userIdStr);
     }
 
     // Get username from database
@@ -953,15 +962,14 @@ app.get('/api/agora/rtc-token', authenticateToken, async (req, res) => {
       privilegeExpiredTs
     );
 
-    // 🎯 CRITICAL: Store user mapping
-    const userIdStr = req.user.userId.toString();
+    // 🎯 CRITICAL: Store user mapping (userIdStr already declared above)
     uidToUserIdMap.set(uid, userIdStr);
-    
+
     // Track active user in channel
     if (!activeVoiceUsers.has(channelName)) {
       activeVoiceUsers.set(channelName, new Map());
     }
-    
+
     // 🔥 UPDATE: Always update/overwrite user data to keep it fresh
     activeVoiceUsers.get(channelName).set(uid, {
       username,
@@ -971,7 +979,7 @@ app.get('/api/agora/rtc-token', authenticateToken, async (req, res) => {
 
     // Clean up old users (older than 2 hours) AND empty channels
     const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
-    
+
     for (const [ch, users] of activeVoiceUsers.entries()) {
       for (const [u, data] of users.entries()) {
         if (data.joinedAt < twoHoursAgo) {
@@ -989,10 +997,10 @@ app.get('/api/agora/rtc-token', authenticateToken, async (req, res) => {
     if (activeVoiceUsers.has(channelName)) {
       for (const [u, data] of activeVoiceUsers.get(channelName).entries()) {
         // Don't include self in the list if you want, but usually it helps to know everyone
-        channelUsers.push({ 
-          uid: u, 
+        channelUsers.push({
+          uid: u,
           username: data.username,
-          userId: data.userId 
+          userId: data.userId
         });
       }
     }
@@ -1021,7 +1029,7 @@ app.get('/api/agora/user/:uid', authenticateToken, async (req, res) => {
   try {
     const uid = parseInt(req.params.uid);
     const username = await getUsernameByUid(uid);
-    
+
     res.json({ uid, username });
   } catch (error) {
     console.error('Get username error:', error);
@@ -1035,7 +1043,7 @@ app.get('/api/agora/user/:uid', authenticateToken, async (req, res) => {
 
 async function initializeDefaultChannels() {
   const channelCount = await Channel.countDocuments();
-  
+
   if (channelCount === 0) {
     const defaultChannels = [
       { name: 'general', category: 'General', description: 'General discussion', isPublic: true },
@@ -1045,7 +1053,7 @@ async function initializeDefaultChannels() {
       { name: 'support', category: 'Support', description: 'Emotional support and encouragement', isPublic: true },
       { name: 'wellness', category: 'Support', description: 'Mental health and wellness', isPublic: true }
     ];
-    
+
     await Channel.insertMany(defaultChannels);
     console.log('✅ Default channels created');
   }

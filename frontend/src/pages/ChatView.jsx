@@ -82,13 +82,13 @@ function ProfilePanel({ user, onClose, onUpdate }) {
             <div className="flex justify-between items-center mb-2">
               <span className="text-sm text-gray-300 font-medium">Test Skoru</span>
               <span className={`text-sm font-bold px-2 py-0.5 rounded ${testPercentage >= 75 ? 'bg-green-500/20 text-green-400' :
-                  testPercentage >= 50 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400'
+                testPercentage >= 50 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400'
                 }`}>%{testPercentage}</span>
             </div>
             <div className="w-full bg-gray-900 rounded-full h-2.5">
               <div
                 className={`h-2.5 rounded-full ${testPercentage >= 75 ? 'bg-green-500' :
-                    testPercentage >= 50 ? 'bg-yellow-500' : 'bg-red-500'
+                  testPercentage >= 50 ? 'bg-yellow-500' : 'bg-red-500'
                   }`}
                 style={{ width: `${testPercentage}%` }}
               ></div>
@@ -739,8 +739,8 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
                       key={channel.id || channel._id}
                       onClick={() => setActiveChannel(channel)}
                       className={`w-full flex items-center px-3 py-2 rounded-lg transition-all duration-200 group ${isActive
-                          ? 'bg-indigo-600/10 text-white shadow-sm border border-indigo-600/20'
-                          : 'text-gray-400 hover:bg-gray-700/50 hover:text-gray-200'
+                        ? 'bg-indigo-600/10 text-white shadow-sm border border-indigo-600/20'
+                        : 'text-gray-400 hover:bg-gray-700/50 hover:text-gray-200'
                         }`}
                     >
                       <Hash size={18} className={`mr-2.5 flex-shrink-0 ${isActive ? 'text-indigo-400' : 'text-gray-500 group-hover:text-gray-400'}`} />
@@ -791,6 +791,23 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
         )}
 
         <div className="bg-gray-850 p-4 border-t border-gray-700 flex-shrink-0">
+          {/* Rating Button - Separate Section */}
+          <div className="mb-3">
+            <button
+              onClick={() => setShowRatingModal(true)}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700 text-white rounded-lg transition-all shadow-lg font-medium group"
+            >
+              <Star className="w-4 h-4 group-hover:scale-110 transition-transform" />
+              <span className="text-sm">Sitemizi Değerlendirin</span>
+            </button>
+            {existingRating && (
+              <p className="text-xs text-center text-gray-400 mt-1">
+                Mevcut puanınız: {'⭐'.repeat(existingRating.rating)}
+              </p>
+            )}
+          </div>
+
+          {/* User Info Row */}
           <div className="flex items-center gap-3">
             <div className="relative group cursor-pointer" onClick={() => setShowProfile(true)}>
               <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold shadow-lg group-hover:ring-2 ring-indigo-400 transition">
@@ -801,21 +818,6 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold text-white truncate">{user.displayName || user.email.split('@')[0]}</p>
               <p className="text-xs text-gray-400 truncate">#{String(user.id).slice(-4)}</p>
-            </div>
-            <div className="px-4 py-3 border-t border-gray-700">
-              <button
-                onClick={() => setShowRatingModal(true)}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700 text-white rounded-xl transition-all shadow-lg font-medium group"
-              >
-                <Star className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                <span>Sitemizi Değerlendirin</span>
-              </button>
-              {existingRating && (
-                <p className="text-xs text-center text-gray-400 mt-2">
-                  Mevcut puanınız: {'⭐'.repeat(existingRating.rating)}
-                </p>
-              )}
-
             </div>
             <div className="flex flex-col gap-1">
               <button onClick={() => setShowProfile(true)} className="p-1.5 hover:bg-gray-700 rounded text-gray-400 hover:text-white transition">
