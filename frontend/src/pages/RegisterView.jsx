@@ -11,7 +11,6 @@ function RegisterView({ onRegister, onBack }) {
     confirmPassword: '',
     gender: '',
     age: '',
-    education: '',
     kvkkApproved: false,
     showPassword: false
   });
@@ -78,8 +77,7 @@ function RegisterView({ onRegister, onBack }) {
     try {
       const result = await API.register(formData.email, formData.password, {
         gender: formData.gender,
-        age: parseInt(formData.age),
-        education: formData.education
+        age: parseInt(formData.age)
       });
       localStorage.setItem('token', result.token);
       localStorage.setItem('user', JSON.stringify(result.user));
@@ -93,7 +91,7 @@ function RegisterView({ onRegister, onBack }) {
 
   const handleNext = () => {
     if (step === 1) {
-      if (!formData.gender || !formData.age || !formData.education) {
+      if (!formData.gender || !formData.age) {
         setError('Lütfen tüm alanları doldurun.');
         return;
       }
@@ -124,8 +122,8 @@ function RegisterView({ onRegister, onBack }) {
               <div
                 key={index}
                 className={`transition-all duration-700 absolute inset-0 transform ${index === activeTextIndex
-                    ? 'opacity-100 translate-y-0 blur-0'
-                    : 'opacity-0 -translate-y-8 blur-sm pointer-events-none'
+                  ? 'opacity-100 translate-y-0 blur-0'
+                  : 'opacity-0 -translate-y-8 blur-sm pointer-events-none'
                   }`}
               >
                 <div className="animate-bounce-slow">{text.icon}</div>
@@ -171,8 +169,8 @@ function RegisterView({ onRegister, onBack }) {
                         type="button"
                         onClick={() => setFormData({ ...formData, gender: opt })}
                         className={`py-3.5 rounded-2xl border-2 text-sm font-bold transition-all ${formData.gender === opt
-                            ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 shadow-sm'
-                            : 'border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
+                          ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 shadow-sm'
+                          : 'border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
                           }`}
                       >
                         {opt}
@@ -186,22 +184,6 @@ function RegisterView({ onRegister, onBack }) {
                     className="w-full px-5 py-4 rounded-2xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 text-gray-900 dark:text-white focus:bg-white dark:focus:bg-gray-800 focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
                     placeholder="Örn: 17"
                   />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2 ml-1">Okulunuz</label>
-                  <div className="relative">
-                    <select name="education" value={formData.education} onChange={handleChange}
-                      className="w-full px-5 py-4 rounded-2xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 text-gray-900 dark:text-white focus:bg-white dark:focus:bg-gray-800 focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all appearance-none cursor-pointer"
-                    >
-                      <option value="">Seçiniz...</option>
-                      <option value="Alanya Lisesi">Alanya Lisesi</option>
-                      <option value="Hüseyin Girenes Fen Lisesi">Hüseyin Girenes Fen Lisesi</option>
-                      <option value="Diğer">Diğer</option>
-                    </select>
-                    <div className="absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
-                    </div>
-                  </div>
                 </div>
               </div>
             ) : (

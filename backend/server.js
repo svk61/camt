@@ -43,7 +43,6 @@ const UserSchema = new mongoose.Schema({
   gender: String,
   age: Number,
   education: String,
-  school: String,
   assignedChannels: [String],
   isAdmin: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now }
@@ -424,9 +423,9 @@ app.get('/api/assessment/results/stats', adminMiddleware, async (req, res) => {
 
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { email, password, gender, age, education, school } = req.body;
+    const { email, password, gender, age } = req.body;
 
-    if (!email || !password || !gender || !age || !education) {
+    if (!email || !password || !gender || !age) {
       return res.status(400).json({ error: 'Tüm alanlar gereklidir' });
     }
 
@@ -441,9 +440,7 @@ app.post('/api/auth/register', async (req, res) => {
       email,
       password: hashedPassword,
       gender,
-      age: parseInt(age),
-      education,
-      school: school || null
+      age: parseInt(age)
     });
 
     await user.save();
