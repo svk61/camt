@@ -466,7 +466,17 @@ app.post('/api/auth/register', async (req, res) => {
     });
   } catch (error) {
     console.error('Registration error:', error);
-    res.status(500).json({ error: 'Kayıt başarısız' });
+    console.error('Error details:', error.message);
+    console.error('Error stack:', error.stack);
+
+    // Send more specific error message
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({ error: 'Validation error: ' + error.message });
+    }
+    if (error.code === 11000) {
+      return res.status(400).json({ error: 'Bu e-mail zaten kayıtlı' });
+    }
+    res.status(500).json({ error: 'Kayıt başarısız', details: error.message });
   }
 });
 
