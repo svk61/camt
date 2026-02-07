@@ -39,6 +39,7 @@ const UserSchema = new mongoose.Schema({
   hasCompletedAssessment: { type: Boolean, default: false },
   assessmentAnswers: Object,
   assessmentScore: { type: Number, default: 0 },
+  syndromeLevel: { type: String, enum: ['dusuk', 'orta', 'yuksek'], default: null },
   gender: String,
   age: Number,
   education: String,
@@ -501,6 +502,8 @@ app.post('/api/auth/login', async (req, res) => {
         bio: user.bio,
         isAnonymous: user.isAnonymous,
         hasCompletedAssessment: user.hasCompletedAssessment,
+        assessmentScore: user.assessmentScore,
+        syndromeLevel: user.syndromeLevel,
         isAdmin: user.isAdmin,
         assignedChannels: user.assignedChannels
       }
@@ -586,6 +589,22 @@ app.post('/api/assessment/submit', authMiddleware, async (req, res) => {
 
     const score = Object.values(answers).filter(answer => answer === 'yes').length;
 
+    // Determine glass ceiling syndrome level and assign channels
+    // 0-6: Low level, 7-13: Medium level, 14-16: High level
+    let syndromeLevel = 'dusuk';
+    let assignedChannels = ['general'];
+
+    if (score <= 6) {
+      syndromeLevel = 'dusuk';
+      assignedChannels = ['general', 'dusuk-seviye-destek', 'kariyer-gelisim'];
+    } else if (score <= 13) {
+      syndromeLevel = 'orta';
+      assignedChannels = ['general', 'orta-seviye-destek', 'mentorluk'];
+    } else {
+      syndromeLevel = 'yuksek';
+      assignedChannels = ['general', 'yuksek-seviye-destek', 'yogun-destek', 'terapi-onerileri'];
+    }
+
     const assessmentResult = new AssessmentResult({
       userId: req.user._id,
       answers,
@@ -603,8 +622,9 @@ app.post('/api/assessment/submit', authMiddleware, async (req, res) => {
         $set: {
           assessmentAnswers: answers,
           assessmentScore: score,
+          syndromeLevel: syndromeLevel,
           hasCompletedAssessment: true,
-          assignedChannels: ['general', 'support']
+          assignedChannels: assignedChannels
         }
       },
       { new: true }
@@ -619,6 +639,7 @@ app.post('/api/assessment/submit', authMiddleware, async (req, res) => {
       score,
       totalQuestions: 16,
       percentage: Math.round((score / 16) * 100),
+      syndromeLevel,
       assignedChannels: updatedUser.assignedChannels
     });
   } catch (error) {
@@ -1104,16 +1125,25 @@ async function initializeDefaultChannels() {
 
   if (channelCount === 0) {
     const defaultChannels = [
-      { name: 'general', category: 'General', description: 'General discussion', isPublic: true },
-      { name: 'career-advice', category: 'Support', description: 'Career guidance and advice', isPublic: true },
-      { name: 'mentorship', category: 'Support', description: 'Mentorship opportunities', isPublic: false },
-      { name: 'networking', category: 'Community', description: 'Professional networking', isPublic: true },
-      { name: 'support', category: 'Support', description: 'Emotional support and encouragement', isPublic: true },
-      { name: 'wellness', category: 'Support', description: 'Mental health and wellness', isPublic: true }
+      // Genel kanallar
+      { name: 'general', category: 'Genel', description: 'Genel sohbet kanalı', isPublic: true },
+
+      // Düşük seviye (0-6 puan)
+      { name: 'dusuk-seviye-destek', category: 'Düşük Seviye', description: 'Düşük cam tavan sendromu yaşayanlar için destek', isPublic: false },
+      { name: 'kariyer-gelisim', category: 'Düşük Seviye', description: 'Kariyer gelişimi ve fırsatlar', isPublic: false },
+
+      // Orta seviye (7-13 puan)
+      { name: 'orta-seviye-destek', category: 'Orta Seviye', description: 'Orta düzey cam tavan sendromu yaşayanlar için destek', isPublic: false },
+      { name: 'mentorluk', category: 'Orta Seviye', description: 'Mentorluk ve rehberlik', isPublic: false },
+
+      // Yüksek seviye (14-16 puan)
+      { name: 'yuksek-seviye-destek', category: 'Yüksek Seviye', description: 'Yüksek cam tavan sendromu yaşayanlar için destek', isPublic: false },
+      { name: 'yogun-destek', category: 'Yüksek Seviye', description: 'Yoğun duygusal destek', isPublic: false },
+      { name: 'terapi-onerileri', category: 'Yüksek Seviye', description: 'Profesyonel destek önerileri', isPublic: false }
     ];
 
     await Channel.insertMany(defaultChannels);
-    console.log('✅ Default channels created');
+    console.log('✅ Default channels created with score-based levels');
   }
 }
 

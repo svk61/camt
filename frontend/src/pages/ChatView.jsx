@@ -256,6 +256,7 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [existingRating, setExistingRating] = useState(null);
+  const [filterWarning, setFilterWarning] = useState(null);
 
   // Refs
   const messagesEndRef = useRef(null);
@@ -415,7 +416,8 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
       console.error('Mesaj gitmedi:', error);
       // Handle content filter rejection
       if (error.message && error.message.includes('filtered')) {
-        alert('⚠️ ' + (error.details?.message || 'Mesajınız uygunsuz içerik içeriyor. Lütfen topluluk kurallarına uyun.'));
+        setFilterWarning(error.details?.message || 'Mesajınız uygunsuz içerik içeriyor. Lütfen topluluk kurallarına uyun.');
+        setTimeout(() => setFilterWarning(null), 5000); // Clear after 5 seconds
       } else {
         alert('Mesaj gönderilemedi.');
       }
@@ -1018,14 +1020,31 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
 
         {/* 🔥 MOBILE OPTIMIZED Input - Fixed position with safe area */}
         <div
-          className="p-3 sm:p-4 bg-gray-800 border-t border-gray-700 flex-shrink-0"
+          className={`p-3 sm:p-4 bg-gray-800 border-t border-gray-700 flex-shrink-0 ${filterWarning ? 'animate-shake' : ''}`}
           style={{
             paddingBottom: inVoiceCall
-              ? 'calc(env(safe-area-inset-bottom) + 0.75rem)'  // Extra padding when voice bar present
+              ? 'calc(env(safe-area-inset-bottom) + 0.75rem)'
               : 'calc(env(safe-area-inset-bottom) + 0.75rem)',
           }}
         >
-          <div className="relative flex items-center bg-gray-700/50 rounded-xl border border-gray-600/50 focus-within:border-indigo-500/50 focus-within:ring-1 focus-within:ring-indigo-500/50 transition shadow-inner">
+          {/* Filter Warning */}
+          {filterWarning && (
+            <div className="mb-3 p-3 bg-red-500/20 border border-red-500/30 rounded-lg flex items-start gap-2 animate-slide-down">
+              <svg className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+              <p className="text-red-300 text-sm flex-1">{filterWarning}</p>
+              <button
+                onClick={() => setFilterWarning(null)}
+                className="text-red-400 hover:text-red-300 p-1"
+              >
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
+          )}
+          <div className={`relative flex items-center bg-gray-700/50 rounded-xl border ${filterWarning ? 'border-red-500/50 ring-1 ring-red-500/50' : 'border-gray-600/50 focus-within:border-indigo-500/50 focus-within:ring-1 focus-within:ring-indigo-500/50'} transition shadow-inner`}>
             <input
               type="text"
               value={messageInput}
