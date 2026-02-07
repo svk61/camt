@@ -1,12 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Trash2, Plus, X, MessageSquare, Users, Settings, BarChart3, Eye, Download, Filter, LogOut, Lock, Menu, Star } from 'lucide-react';
-// UnifiedAdminPanel-Ratings-Addition.jsx
-// Add this to your UnifiedAdminPanel.jsx
-
-// 1. Add to state (at the top with other state variables):
-const [ratingsStats, setRatingsStats] = useState(null);
-const [ratings, setRatings] = useState([]);
-const API_URL = import.meta.env.VITE_API_URL ;
 
 export default function UnifiedAdminPanel() {
   const [token, setToken] = useState('');
@@ -15,8 +8,8 @@ export default function UnifiedAdminPanel() {
   const [activeTab, setActiveTab] = useState('channels');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [initializing, setInitializing] = useState(true); // New state for initial load
-  
+  const [initializing, setInitializing] = useState(true);
+
   // Channel management
   const [channels, setChannels] = useState([]);
   const [showAddChannel, setShowAddChannel] = useState(false);
@@ -26,10 +19,10 @@ export default function UnifiedAdminPanel() {
     description: '',
     isPublic: true
   });
-  
+
   const [selectedChannel, setSelectedChannel] = useState(null);
   const [messages, setMessages] = useState([]);
-  
+
   // Assessment results
   const [stats, setStats] = useState(null);
   const [assessmentResults, setAssessmentResults] = useState([]);
@@ -43,13 +36,19 @@ export default function UnifiedAdminPanel() {
     sortBy: 'score-desc',
     school: ''
   });
-  
+
+  // Ratings state
+  const [ratingsStats, setRatingsStats] = useState(null);
+  const [ratings, setRatings] = useState([]);
+
   const [confirmDialog, setConfirmDialog] = useState({
     show: false,
     title: '',
     message: '',
     onConfirm: null
   });
+
+  const API_URL = import.meta.env.VITE_API_URL;
 
   const handleLogin = async () => {
     if (!password) {
@@ -66,21 +65,21 @@ export default function UnifiedAdminPanel() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password })
       });
-      
+
       const data = await response.json();
-      
+
       console.log('Login response:', { ok: response.ok, status: response.status, hasToken: !!data.token });
-      
+
       if (response.ok && data.token) {
         setToken(data.token);
         setIsAuthenticated(true);
         localStorage.setItem('adminToken', data.token);
         setPassword('');
-        
+
         // Wait a bit for token to propagate
         await new Promise(resolve => setTimeout(resolve, 100));
-        
-        // Try to load data with the new token (these are optional, don't fail login)
+
+        // Try to load data with the new token
         await loadChannels(data.token);
         await loadStats(data.token);
       } else {
@@ -94,414 +93,397 @@ export default function UnifiedAdminPanel() {
     }
   };
 
- // 1. loadChannels
-const loadChannels = async (authToken = null) => {
-  try {
-    const tokenToUse = authToken || token;
-    console.log('Loading channels with token:', tokenToUse ? 'Present' : 'Missing');
-    
-    const response = await fetch(`${API_URL}/api/channels/all`, {
-      headers: { 
-        'Authorization': `Bearer ${tokenToUse}`,
-        'Content-Type': 'application/json'
+  const loadChannels = async (authToken = null) => {
+    try {
+      const tokenToUse = authToken || token;
+      console.log('Loading channels with token:', tokenToUse ? 'Present' : 'Missing');
+
+      const response = await fetch(`${API_URL}/api/channels/all`, {
+        headers: {
+          'Authorization': `Bearer ${tokenToUse}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      console.log('Channels response status:', response.status);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Channels error:', errorData);
+        setChannels([]);
+        return;
       }
-    });
-    
-    console.log('Channels response status:', response.status);
-    
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error('Channels error:', errorData);
+
+      const data = await response.json();
+      console.log('Channels loaded:', data.length);
+      setChannels(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Kanallar yüklenemedi:', error.message);
       setChannels([]);
+    }
+  };
+
+  const loadRatingsStats = async () => {
+    try {
+      const token = localStorage.getItem('adminToken');
+      console.log('Loading rating stats with token:', token ? 'Present' : 'Missing');
+
+      const response = await fetch(`${API_URL}/api/ratings/stats`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      console.log('Rating stats response status:', response.status);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('Rating stats loaded successfully');
+      setRatingsStats(data);
+    } catch (error) {
+      console.error('Rating stats yüklenemedi:', error.message);
+      setRatingsStats(null);
+    }
+  };
+
+  const loadRatings = async () => {
+    try {
+      setLoading(true);
+      const token = localStorage.getItem('adminToken');
+      console.log('Loading ratings with token:', token ? 'Present' : 'Missing');
+
+      const response = await fetch(`${API_URL}/api/ratings`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      console.log('Ratings response status:', response.status);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('Ratings loaded:', data.length);
+      setRatings(data);
+    } catch (error) {
+      console.error('Ratings yüklenemedi:', error);
+      setError('Değerlendirmeler yüklenirken bir hata oluştu: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteRating = async (ratingId) => {
+    if (!confirm('Bu değerlendirmeyi silmek istediğinize emin misiniz?')) {
       return;
     }
-    
-    const data = await response.json();
-    console.log('Channels loaded:', data.length);
-    setChannels(Array.isArray(data) ? data : []);
-  } catch (error) {
-    console.error('Kanallar yüklenemedi:', error.message);
-    setChannels([]);
-  }
-};
-const loadRatingsStats = async () => {
-  try {
-    const token = localStorage.getItem('adminToken');
-    console.log('Loading rating stats with token:', token ? 'Present' : 'Missing');
-    
-    const response = await fetch(`${API_URL}/api/ratings/stats`, {
-      headers: { 
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    });
-    
-    console.log('Rating stats response status:', response.status);
-    
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    
-    const data = await response.json();
-    console.log('Rating stats loaded successfully');
-    setRatingsStats(data);
-  } catch (error) {
-    console.error('Rating stats yüklenemedi:', error.message);
-    setRatingsStats(null);
-  }
-};
 
-const loadRatings = async () => {
-  try {
-    setLoading(true);
-    const token = localStorage.getItem('adminToken');
-    console.log('Loading ratings with token:', token ? 'Present' : 'Missing');
-    
-    const response = await fetch(`${API_URL}/api/ratings`, {
-      headers: { 
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    });
-    
-    console.log('Ratings response status:', response.status);
-    
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    
-    const data = await response.json();
-    console.log('Ratings loaded:', data.length);
-    setRatings(data);
-  } catch (error) {
-    console.error('Ratings yüklenemedi:', error);
-    setError('Değerlendirmeler yüklenirken bir hata oluştu: ' + error.message);
-  } finally {
-    setLoading(false);
-  }
-};
-
-const handleDeleteRating = async (ratingId) => {
-  if (!confirm('Bu değerlendirmeyi silmek istediğinize emin misiniz?')) {
-    return;
-  }
-  
-  try {
-    const token = localStorage.getItem('adminToken');
-    const response = await fetch(`${API_URL}/api/ratings/${ratingId}`, {
-      method: 'DELETE',
-      headers: { 
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    });
-    
-    if (response.ok) {
-      await loadRatings();
-      await loadRatingsStats();
-      alert('Değerlendirme silindi');
-    } else {
-      const errorData = await response.json().catch(() => ({}));
-      alert('Değerlendirme silinemedi: ' + (errorData.error || 'Bilinmeyen hata'));
-    }
-  } catch (error) {
-    console.error('Delete rating error:', error);
-    alert('Değerlendirme silinemedi: ' + error.message);
-  }
-};
-// 2. handleAddChannel
-const handleAddChannel = async () => {
-  try {
-    console.log('Adding channel with token:', token ? 'Present' : 'Missing');
-    
-    const response = await fetch(`${API_URL}/api/channels`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify(newChannel)
-    });
-    
-    console.log('Add channel response:', response.status);
-    
-    if (response.ok) {
-      setShowAddChannel(false);
-      setNewChannel({ name: '', category: 'Support', description: '', isPublic: true });
-      await loadChannels();
-      alert('Kanal başarıyla eklendi');
-    } else {
-      const errorData = await response.json().catch(() => ({}));
-      console.error('Add channel error:', errorData);
-      alert('Kanal eklenemedi: ' + (errorData.error || 'Bilinmeyen hata'));
-    }
-  } catch (error) {
-    console.error('Add channel error:', error);
-    alert('Kanal eklenemedi: ' + error.message);
-  }
-};
-
-// 3. handleDeleteChannel
-const handleDeleteChannel = async (channelId) => {
-  setConfirmDialog({
-    show: true,
-    title: 'Kanalı Sil',
-    message: 'Bu kanalı silmek istediğinize emin misiniz?',
-    onConfirm: async () => {
-      try {
-        console.log('Deleting channel with token:', token ? 'Present' : 'Missing');
-        
-        const response = await fetch(`${API_URL}/api/channels/${channelId}`, {
-          method: 'DELETE',
-          headers: { 
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        });
-        
-        console.log('Delete channel response:', response.status);
-        
-        if (response.ok) {
-          await loadChannels();
-          alert('Kanal silindi');
-        } else {
-          const errorData = await response.json().catch(() => ({}));
-          console.error('Delete channel error:', errorData);
-          alert('Kanal silinemedi: ' + (errorData.error || 'Bilinmeyen hata'));
+    try {
+      const token = localStorage.getItem('adminToken');
+      const response = await fetch(`${API_URL}/api/ratings/${ratingId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
         }
-      } catch (error) {
-        console.error('Delete channel error:', error);
-        alert('Kanal silinemedi: ' + error.message);
-      }
-      setConfirmDialog({ show: false, title: '', message: '', onConfirm: null });
-    }
-  });
-};
+      });
 
-// 4. loadMessages
-const loadMessages = async (channelId) => {
-  try {
-    console.log('Loading messages with token:', token ? 'Present' : 'Missing');
-    
-    const response = await fetch(`${API_URL}/api/channels/${channelId}/messages`, {
-      headers: { 
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
+      if (response.ok) {
+        await loadRatings();
+        await loadRatingsStats();
+        alert('Değerlendirme silindi');
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        alert('Değerlendirme silinemedi: ' + (errorData.error || 'Bilinmeyen hata'));
       }
-    });
-    
-    console.log('Messages response status:', response.status);
-    
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error('Messages error:', errorData);
-      throw new Error(`HTTP ${response.status}`);
+    } catch (error) {
+      console.error('Delete rating error:', error);
+      alert('Değerlendirme silinemedi: ' + error.message);
     }
-    
-    const data = await response.json();
-    console.log('Messages loaded:', data.length);
-    setMessages(Array.isArray(data) ? data : []);
-    setSelectedChannel(channels.find(c => c._id === channelId));
-  } catch (error) {
-    console.error('Mesajlar yüklenemedi:', error);
-    setMessages([]);
-    setError('Mesajlar yüklenirken bir hata oluştu: ' + error.message);
-  }
-};
+  };
 
-// 5. handleDeleteMessage
-const handleDeleteMessage = async (channelId, messageId) => {
-  try {
-    console.log('Deleting message with token:', token ? 'Present' : 'Missing');
-    
-    const response = await fetch(`${API_URL}/api/channels/${channelId}/messages/${messageId}`, {
-      method: 'DELETE',
-      headers: { 
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
+  const handleAddChannel = async () => {
+    try {
+      console.log('Adding channel with token:', token ? 'Present' : 'Missing');
+
+      const response = await fetch(`${API_URL}/api/channels`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(newChannel)
+      });
+
+      console.log('Add channel response:', response.status);
+
+      if (response.ok) {
+        setShowAddChannel(false);
+        setNewChannel({ name: '', category: 'Support', description: '', isPublic: true });
+        await loadChannels();
+        alert('Kanal başarıyla eklendi');
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Add channel error:', errorData);
+        alert('Kanal eklenemedi: ' + (errorData.error || 'Bilinmeyen hata'));
       }
-    });
-    
-    console.log('Delete message response:', response.status);
-    
-    if (response.ok) {
-      await loadMessages(channelId);
-    } else {
-      const errorData = await response.json().catch(() => ({}));
-      console.error('Delete message error:', errorData);
-      alert('Mesaj silinemedi: ' + (errorData.error || 'Bilinmeyen hata'));
+    } catch (error) {
+      console.error('Add channel error:', error);
+      alert('Kanal eklenemedi: ' + error.message);
     }
-  } catch (error) {
-    console.error('Delete message error:', error);
-    alert('Mesaj silinemedi: ' + error.message);
-  }
-};
+  };
 
-// 6. handleClearChannel
-const handleClearChannel = async (channelId) => {
-  setConfirmDialog({
-    show: true,
-    title: 'Tüm Mesajları Sil',
-    message: 'Bu kanaldaki TÜM mesajları silmek istediğinize emin misiniz? Bu işlem geri alınamaz.',
-    onConfirm: async () => {
-      try {
-        console.log('Clearing channel with token:', token ? 'Present' : 'Missing');
-        
-        const response = await fetch(`${API_URL}/api/channels/${channelId}/messages`, {
-          method: 'DELETE',
-          headers: { 
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
+  const handleDeleteChannel = async (channelId) => {
+    setConfirmDialog({
+      show: true,
+      title: 'Kanalı Sil',
+      message: 'Bu kanalı silmek istediğinize emin misiniz?',
+      onConfirm: async () => {
+        try {
+          console.log('Deleting channel with token:', token ? 'Present' : 'Missing');
+
+          const response = await fetch(`${API_URL}/api/channels/${channelId}`, {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+
+          console.log('Delete channel response:', response.status);
+
+          if (response.ok) {
+            await loadChannels();
+            alert('Kanal silindi');
+          } else {
+            const errorData = await response.json().catch(() => ({}));
+            console.error('Delete channel error:', errorData);
+            alert('Kanal silinemedi: ' + (errorData.error || 'Bilinmeyen hata'));
           }
-        });
-        
-        console.log('Clear channel response:', response.status);
-        
-        if (response.ok) {
-          await loadMessages(channelId);
-          alert('Tüm mesajlar silindi');
-        } else {
-          const errorData = await response.json().catch(() => ({}));
-          console.error('Clear channel error:', errorData);
-          alert('Mesajlar silinemedi: ' + (errorData.error || 'Bilinmeyen hata'));
+        } catch (error) {
+          console.error('Delete channel error:', error);
+          alert('Kanal silinemedi: ' + error.message);
         }
-      } catch (error) {
-        console.error('Clear channel error:', error);
-        alert('Mesajlar silinemedi: ' + error.message);
-      }
-      setConfirmDialog({ show: false, title: '', message: '', onConfirm: null });
-    }
-  });
-};
-
-// 7. loadStats
-const loadStats = async (authToken = null) => {
-  try {
-    const tokenToUse = authToken || token;
-    console.log('Loading stats with token:', tokenToUse ? 'Present' : 'Missing');
-    
-    const response = await fetch(`${API_URL}/api/assessment/results/stats`, {
-      headers: { 
-        'Authorization': `Bearer ${tokenToUse}`,
-        'Content-Type': 'application/json'
+        setConfirmDialog({ show: false, title: '', message: '', onConfirm: null });
       }
     });
-    
-    console.log('Stats response status:', response.status);
-    
-    if (response.status === 401) {
-      throw new Error('Authentication expired');
-    }
-    
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    
-    const data = await response.json();
-    console.log('Stats loaded successfully');
-    setStats(data);
-  } catch (error) {
-    console.error('İstatistikler yüklenemedi:', error.message);
-    setStats(null);
-  }
-};
+  };
 
-// 8. loadAssessmentResults
-const loadAssessmentResults = async () => {
-  try {
-    setLoading(true);
-    console.log('Loading assessment results with token:', token ? 'Present' : 'Missing');
-    
-    const response = await fetch(`${API_URL}/api/assessment/results`, {
-      headers: { 
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
+  const loadMessages = async (channelId) => {
+    try {
+      console.log('Loading messages with token:', token ? 'Present' : 'Missing');
+
+      const response = await fetch(`${API_URL}/api/channels/${channelId}/messages`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      console.log('Messages response status:', response.status);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Messages error:', errorData);
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('Messages loaded:', data.length);
+      setMessages(Array.isArray(data) ? data : []);
+      setSelectedChannel(channels.find(c => c._id === channelId));
+    } catch (error) {
+      console.error('Mesajlar yüklenemedi:', error);
+      setMessages([]);
+      setError('Mesajlar yüklenirken bir hata oluştu: ' + error.message);
+    }
+  };
+
+  const handleDeleteMessage = async (channelId, messageId) => {
+    try {
+      console.log('Deleting message with token:', token ? 'Present' : 'Missing');
+
+      const response = await fetch(`${API_URL}/api/channels/${channelId}/messages/${messageId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      console.log('Delete message response:', response.status);
+
+      if (response.ok) {
+        await loadMessages(channelId);
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Delete message error:', errorData);
+        alert('Mesaj silinemedi: ' + (errorData.error || 'Bilinmeyen hata'));
+      }
+    } catch (error) {
+      console.error('Delete message error:', error);
+      alert('Mesaj silinemedi: ' + error.message);
+    }
+  };
+
+  const handleClearChannel = async (channelId) => {
+    setConfirmDialog({
+      show: true,
+      title: 'Tüm Mesajları Sil',
+      message: 'Bu kanaldaki TÜM mesajları silmek istediğinize emin misiniz? Bu işlem geri alınamaz.',
+      onConfirm: async () => {
+        try {
+          console.log('Clearing channel with token:', token ? 'Present' : 'Missing');
+
+          const response = await fetch(`${API_URL}/api/channels/${channelId}/messages`, {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+
+          console.log('Clear channel response:', response.status);
+
+          if (response.ok) {
+            await loadMessages(channelId);
+            alert('Tüm mesajlar silindi');
+          } else {
+            const errorData = await response.json().catch(() => ({}));
+            console.error('Clear channel error:', errorData);
+            alert('Mesajlar silinemedi: ' + (errorData.error || 'Bilinmeyen hata'));
+          }
+        } catch (error) {
+          console.error('Clear channel error:', error);
+          alert('Mesajlar silinemedi: ' + error.message);
+        }
+        setConfirmDialog({ show: false, title: '', message: '', onConfirm: null });
       }
     });
-    
-    console.log('Assessment results response status:', response.status);
-    
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || `HTTP ${response.status}`);
-    }
-    
-    const data = await response.json();
-    
-    const anonymized = data.map((result, index) => ({
-      ...result,
-      anonId: `K${index + 1}`
-    }));
-    
-    console.log('Assessment results loaded:', anonymized.length);
-    setAssessmentResults(anonymized);
-    setError('');
-  } catch (error) {
-    console.error('Sonuçlar yüklenemedi:', error);
-    setError('Sonuçlar yüklenirken bir hata oluştu: ' + error.message);
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
-// 9. İlk useEffect (token validation)
-useEffect(() => {
-  const savedToken = localStorage.getItem('adminToken');
-  if (savedToken) {
-    const validateAndLoad = async () => {
-      try {
-        console.log('Validating saved token...');
-        setToken(savedToken);
-        setIsAuthenticated(true);
-        
-        // Try to load channels and stats
-        await loadChannels(savedToken);
-        await loadStats(savedToken);
-        
-      } catch (error) {
-        console.log('Saved token is invalid, clearing session');
-        localStorage.removeItem('adminToken');
-        setIsAuthenticated(false);
-        setToken('');
-      } finally {
-        setInitializing(false);
+  const loadStats = async (authToken = null) => {
+    try {
+      const tokenToUse = authToken || token;
+      console.log('Loading stats with token:', tokenToUse ? 'Present' : 'Missing');
+
+      const response = await fetch(`${API_URL}/api/assessment/results/stats`, {
+        headers: {
+          'Authorization': `Bearer ${tokenToUse}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      console.log('Stats response status:', response.status);
+
+      if (response.status === 401) {
+        throw new Error('Authentication expired');
       }
-    };
-    
-    validateAndLoad();
-  } else {
-    setInitializing(false);
-  }
-}, []);
-useEffect(() => {
-  if (activeTab === 'results' && isAuthenticated) {
-    loadAssessmentResults();
-  }
-  if (activeTab === 'channels' && isAuthenticated) {
-    loadChannels().catch(err => console.log('Failed to load channels:', err.message));
-  }
-  if (activeTab === 'stats' && isAuthenticated && !stats) {
-    loadStats().catch(err => console.log('Failed to load stats:', err.message));
-  }
-  // 🌟 ADD THIS:
-  if (activeTab === 'ratings' && isAuthenticated) {
-    loadRatings();
-    loadRatingsStats();
-  }
-}, [activeTab, isAuthenticated]);
-// 10. İkinci useEffect (tab changes)
-useEffect(() => {
-  if (activeTab === 'results' && isAuthenticated) {
-    loadAssessmentResults();
-  }
-  if (activeTab === 'channels' && isAuthenticated) {
-    console.log('Channels tab activated, loading channels...');
-    loadChannels().catch(err => console.log('Failed to load channels:', err.message));
-  }
-  if (activeTab === 'stats' && isAuthenticated && !stats) {
-    loadStats().catch(err => console.log('Failed to load stats:', err.message));
-  }
-}, [activeTab, isAuthenticated]);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('Stats loaded successfully');
+      setStats(data);
+    } catch (error) {
+      console.error('İstatistikler yüklenemedi:', error.message);
+      setStats(null);
+    }
+  };
+
+  const loadAssessmentResults = async () => {
+    try {
+      setLoading(true);
+      console.log('Loading assessment results with token:', token ? 'Present' : 'Missing');
+
+      const response = await fetch(`${API_URL}/api/assessment/results`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      console.log('Assessment results response status:', response.status);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      const anonymized = data.map((result, index) => ({
+        ...result,
+        anonId: `K${index + 1}`
+      }));
+
+      console.log('Assessment results loaded:', anonymized.length);
+      setAssessmentResults(anonymized);
+      setError('');
+    } catch (error) {
+      console.error('Sonuçlar yüklenemedi:', error);
+      setError('Sonuçlar yüklenirken bir hata oluştu: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Initial token validation
+  useEffect(() => {
+    const savedToken = localStorage.getItem('adminToken');
+    if (savedToken) {
+      const validateAndLoad = async () => {
+        try {
+          console.log('Validating saved token...');
+          setToken(savedToken);
+          setIsAuthenticated(true);
+
+          await loadChannels(savedToken);
+          await loadStats(savedToken);
+
+        } catch (error) {
+          console.log('Saved token is invalid, clearing session');
+          localStorage.removeItem('adminToken');
+          setIsAuthenticated(false);
+          setToken('');
+        } finally {
+          setInitializing(false);
+        }
+      };
+
+      validateAndLoad();
+    } else {
+      setInitializing(false);
+    }
+  }, []);
+
+  // Tab changes
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    if (activeTab === 'results') {
+      loadAssessmentResults();
+    }
+    if (activeTab === 'channels') {
+      loadChannels().catch(err => console.log('Failed to load channels:', err.message));
+    }
+    if (activeTab === 'stats' && !stats) {
+      loadStats().catch(err => console.log('Failed to load stats:', err.message));
+    }
+    if (activeTab === 'ratings') {
+      loadRatings();
+      loadRatingsStats();
+    }
+  }, [activeTab, isAuthenticated]);
 
   useEffect(() => {
     applyFilters();
@@ -582,11 +564,11 @@ useEffect(() => {
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
-    
+
     link.setAttribute('href', url);
     link.setAttribute('download', `anket-sonuclari-${new Date().toISOString().split('T')[0]}.csv`);
     link.style.visibility = 'hidden';
-    
+
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -596,7 +578,7 @@ useEffect(() => {
     try {
       setLoading(true);
       const adminToken = localStorage.getItem('adminToken');
-      
+
       if (!adminToken) {
         setError('Oturum gereklidir');
         return;
@@ -614,7 +596,7 @@ useEffect(() => {
       }
 
       const fullResults = await response.json();
-      
+
       const schools = [...new Set(fullResults.map(r => r.education).filter(Boolean))].sort();
       const schoolMap = {};
       schools.forEach((school, index) => {
@@ -622,27 +604,27 @@ useEffect(() => {
       });
 
       const totalQuestions = 16;
-      
-      const headers = ['ID', 'Okul', 'Yas', ...Array.from({length: totalQuestions}, (_, i) => `Q${i + 1}`)];
-      
+
+      const headers = ['ID', 'Okul', 'Yas', ...Array.from({ length: totalQuestions }, (_, i) => `Q${i + 1}`)];
+
       const csvRows = [headers.join(';')];
-      
+
       fullResults.forEach((result, index) => {
         const row = [];
-        
+
         row.push(index + 1);
-        
+
         const schoolCode = result.education ? schoolMap[result.education] : 0;
         row.push(schoolCode);
-        
+
         row.push(result.age || 0);
-        
+
         const answers = result.answers || {};
-        
+
         for (let i = 1; i <= totalQuestions; i++) {
           const questionKey = `q${i}`;
           const answer = answers[questionKey];
-          
+
           let value = 0;
           if (answer) {
             const lowerAnswer = String(answer).toLowerCase().trim();
@@ -650,10 +632,10 @@ useEffect(() => {
               value = 1;
             }
           }
-          
+
           row.push(value);
         }
-        
+
         csvRows.push(row.join(';'));
       });
 
@@ -662,7 +644,7 @@ useEffect(() => {
       let spssContent = '* SPSS Veri İçe Aktarma Komutu.\n';
       spssContent += '* Oluşturulma Tarihi: ' + new Date().toLocaleString('tr-TR') + '.\n';
       spssContent += '* Toplam Katılımcı: ' + fullResults.length + '.\n\n';
-      
+
       spssContent += 'GET DATA\n';
       spssContent += '  /TYPE=TXT\n';
       spssContent += '  /FILE="spss-anket-' + new Date().toISOString().split('T')[0] + '.csv"\n';
@@ -680,9 +662,9 @@ useEffect(() => {
         spssContent += `  Q${i} F8.0\n`;
       }
       spssContent += '.\n\n';
-      
+
       spssContent += 'EXECUTE.\n\n';
-      
+
       spssContent += 'VARIABLE LABELS\n';
       spssContent += '  ID "Katılımcı ID"\n';
       spssContent += '  Okul "Okul Kodu"\n';
@@ -691,7 +673,7 @@ useEffect(() => {
         spssContent += `  Q${i} "Soru ${i}"\n`;
       }
       spssContent += '.\n\n';
-      
+
       spssContent += 'VALUE LABELS\n';
       spssContent += '  Okul\n';
       schools.forEach((school, index) => {
@@ -701,9 +683,9 @@ useEffect(() => {
       spssContent += '    0 "Hayır"\n';
       spssContent += '    1 "Evet"\n';
       spssContent += '.\n\n';
-      
+
       spssContent += 'EXECUTE.\n\n';
-      
+
       let codeBookContent = 'SPSS Veri Kodlama Klavuzu\n';
       codeBookContent += '=========================\n\n';
       codeBookContent += 'Tarih: ' + new Date().toLocaleDateString('tr-TR') + '\n';
@@ -724,11 +706,11 @@ useEffect(() => {
       const csvBlob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
       const csvLink = document.createElement('a');
       const csvUrl = URL.createObjectURL(csvBlob);
-      
+
       csvLink.setAttribute('href', csvUrl);
       csvLink.setAttribute('download', `spss-anket-${new Date().toISOString().split('T')[0]}.csv`);
       csvLink.style.visibility = 'hidden';
-      
+
       document.body.appendChild(csvLink);
       csvLink.click();
       document.body.removeChild(csvLink);
@@ -737,11 +719,11 @@ useEffect(() => {
         const spssBlob = new Blob([spssContent], { type: 'text/plain;charset=utf-8;' });
         const spssLink = document.createElement('a');
         const spssUrl = URL.createObjectURL(spssBlob);
-        
+
         spssLink.setAttribute('href', spssUrl);
         spssLink.setAttribute('download', `spss-komutlar-${new Date().toISOString().split('T')[0]}.sps`);
         spssLink.style.visibility = 'hidden';
-        
+
         document.body.appendChild(spssLink);
         spssLink.click();
         document.body.removeChild(spssLink);
@@ -751,19 +733,19 @@ useEffect(() => {
         const codeBlob = new Blob([codeBookContent], { type: 'text/plain;charset=utf-8;' });
         const codeLink = document.createElement('a');
         const codeUrl = URL.createObjectURL(codeBlob);
-        
+
         codeLink.setAttribute('href', codeUrl);
         codeLink.setAttribute('download', `spss-kodlama-klavuzu-${new Date().toISOString().split('T')[0]}.txt`);
         codeLink.style.visibility = 'hidden';
-        
+
         document.body.appendChild(codeLink);
         codeLink.click();
         document.body.removeChild(codeLink);
       }, 1000);
-      
+
       setError('');
       alert('3 dosya indirildi:\n1. CSV veri dosyası\n2. SPSS komut dosyası (.sps)\n3. Kodlama klavuzu\n\nSPSS\'te .sps dosyasını açın ve çalıştırın!');
-      
+
     } catch (err) {
       console.error('SPSS export error:', err);
       setError('SPSS dosyası oluşturulamadı: ' + err.message);
@@ -780,6 +762,8 @@ useEffect(() => {
     setMessages([]);
     setAssessmentResults([]);
     setFilteredResults([]);
+    setRatings([]);
+    setRatingsStats(null);
     setError('');
   };
 
@@ -794,9 +778,9 @@ useEffect(() => {
 
     const totalScore = filteredResults.reduce((sum, r) => sum + (r.score || 0), 0);
     const avgScore = (totalScore / filteredResults.length).toFixed(1);
-    
+
     const highestScore = Math.max(...filteredResults.map(r => r.score || 0));
-    
+
     const totalAge = filteredResults.reduce((sum, r) => sum + (r.age || 0), 0);
     const avgAge = (totalAge / filteredResults.length).toFixed(1);
 
@@ -807,7 +791,6 @@ useEffect(() => {
     };
   };
 
-  // Show loading screen during initialization
   if (initializing) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
@@ -823,7 +806,7 @@ useEffect(() => {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-purple-900/20 via-slate-900 to-slate-900" />
-        
+
         <div className="relative bg-slate-800/50 backdrop-blur-xl rounded-3xl shadow-2xl border border-purple-500/20 p-10 w-full max-w-md">
           <div className="text-center mb-8">
             <div className="bg-gradient-to-br from-purple-500 to-pink-500 w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-purple-500/50">
@@ -834,7 +817,7 @@ useEffect(() => {
             </h1>
             <p className="text-purple-300/80 text-lg">Yönetim Sistemine Hoş Geldiniz</p>
           </div>
-          
+
           <div className="space-y-5">
             <div>
               <label className="block text-sm font-semibold text-purple-300 mb-3">
@@ -850,13 +833,13 @@ useEffect(() => {
                 disabled={loading}
               />
             </div>
-            
+
             {error && (
               <div className="bg-red-500/10 border border-red-500/30 text-red-300 px-5 py-4 rounded-xl text-sm backdrop-blur-sm">
                 {error}
               </div>
             )}
-            
+
             <button
               onClick={handleLogin}
               disabled={loading || !password}
@@ -912,59 +895,54 @@ useEffect(() => {
           <div className="flex overflow-x-auto">
             <button
               onClick={() => setActiveTab('channels')}
-              className={`flex items-center space-x-3 px-8 py-5 font-semibold transition-all whitespace-nowrap ${
-                activeTab === 'channels'
+              className={`flex items-center space-x-3 px-8 py-5 font-semibold transition-all whitespace-nowrap ${activeTab === 'channels'
                   ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg'
                   : 'text-purple-300 hover:bg-purple-500/10'
-              }`}
+                }`}
             >
               <MessageSquare className="w-5 h-5" />
               <span>Kanallar</span>
             </button>
             <button
               onClick={() => setActiveTab('messages')}
-              className={`flex items-center space-x-3 px-8 py-5 font-semibold transition-all whitespace-nowrap ${
-                activeTab === 'messages'
+              className={`flex items-center space-x-3 px-8 py-5 font-semibold transition-all whitespace-nowrap ${activeTab === 'messages'
                   ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg'
                   : 'text-purple-300 hover:bg-purple-500/10'
-              }`}
+                }`}
             >
               <Eye className="w-5 h-5" />
               <span>Mesajlar</span>
             </button>
             <button
               onClick={() => setActiveTab('stats')}
-              className={`flex items-center space-x-3 px-8 py-5 font-semibold transition-all whitespace-nowrap ${
-                activeTab === 'stats'
+              className={`flex items-center space-x-3 px-8 py-5 font-semibold transition-all whitespace-nowrap ${activeTab === 'stats'
                   ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg'
                   : 'text-purple-300 hover:bg-purple-500/10'
-              }`}
+                }`}
             >
               <BarChart3 className="w-5 h-5" />
               <span>İstatistikler</span>
             </button>
             <button
               onClick={() => setActiveTab('results')}
-              className={`flex items-center space-x-3 px-8 py-5 font-semibold transition-all whitespace-nowrap ${
-                activeTab === 'results'
+              className={`flex items-center space-x-3 px-8 py-5 font-semibold transition-all whitespace-nowrap ${activeTab === 'results'
                   ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg'
                   : 'text-purple-300 hover:bg-purple-500/10'
-              }`}
+                }`}
             >
               <Users className="w-5 h-5" />
               <span>Anket Sonuçları</span>
             </button>
-          <button
-  onClick={() => setActiveTab('ratings')}
-  className={`flex items-center space-x-3 px-8 py-5 font-semibold transition-all whitespace-nowrap ${
-    activeTab === 'ratings'
-      ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg'
-      : 'text-purple-300 hover:bg-purple-500/10'
-  }`}
->
-  <Star className="w-5 h-5" />
-  <span>Değerlendirmeler</span>
-</button>
+            <button
+              onClick={() => setActiveTab('ratings')}
+              className={`flex items-center space-x-3 px-8 py-5 font-semibold transition-all whitespace-nowrap ${activeTab === 'ratings'
+                  ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg'
+                  : 'text-purple-300 hover:bg-purple-500/10'
+                }`}
+            >
+              <Star className="w-5 h-5" />
+              <span>Değerlendirmeler</span>
+            </button>
           </div>
         </div>
 
@@ -998,8 +976,7 @@ useEffect(() => {
               {!channels || channels.length === 0 ? (
                 <div className="text-center py-12 bg-slate-700/20 rounded-xl border border-purple-500/20">
                   <MessageSquare className="w-16 h-16 text-purple-400/50 mx-auto mb-4" />
-                  <p className="text-purple-300/70 mb-2">Henüz kanal eklenmemiş veya kanallar yüklenemedi</p>
-                  <p className="text-purple-300/50 text-sm">Kanal özelliği mevcut değilse, diğer sekmeleri kullanabilirsiniz</p>
+                  <p className="text-purple-300/70 mb-2">Henüz kanal eklenmemiş</p>
                 </div>
               ) : (
                 channels.map((channel) => (
@@ -1008,9 +985,8 @@ useEffect(() => {
                       <div className="flex-1">
                         <div className="flex items-center space-x-3 mb-2">
                           <h3 className="text-xl font-bold text-white">{channel.name}</h3>
-                          <span className={`px-3 py-1 text-xs font-semibold rounded-full ${
-                            channel.isPublic ? 'bg-green-500/20 text-green-300 border border-green-500/30' : 'bg-red-500/20 text-red-300 border border-red-500/30'
-                          }`}>
+                          <span className={`px-3 py-1 text-xs font-semibold rounded-full ${channel.isPublic ? 'bg-green-500/20 text-green-300 border border-green-500/30' : 'bg-red-500/20 text-red-300 border border-red-500/30'
+                            }`}>
                             {channel.isPublic ? 'Genel' : 'Özel'}
                           </span>
                           <span className="px-3 py-1 text-xs font-semibold bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded-full">
@@ -1039,7 +1015,7 @@ useEffect(() => {
             <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400 mb-8">
               Mesaj Yönetimi
             </h2>
-            
+
             {!selectedChannel ? (
               <div className="space-y-4">
                 <p className="text-purple-300/70 mb-6">Mesajlarını görmek istediğiniz kanalı seçin:</p>
@@ -1126,138 +1102,137 @@ useEffect(() => {
             )}
           </div>
         )}
-{activeTab === 'ratings' && (
-  <div className="space-y-8">
-    {/* Rating Stats */}
-    {ratingsStats && (
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-gradient-to-br from-yellow-600/20 to-orange-600/20 backdrop-blur-xl rounded-2xl border border-yellow-500/30 p-8">
-          <div className="text-sm text-yellow-300 mb-2">Toplam Değerlendirme</div>
-          <div className="text-4xl font-bold text-white">{ratingsStats.totalRatings || 0}</div>
-        </div>
-        <div className="bg-gradient-to-br from-purple-600/20 to-pink-600/20 backdrop-blur-xl rounded-2xl border border-purple-500/30 p-8">
-          <div className="text-sm text-purple-300 mb-2">Ortalama Puan</div>
-          <div className="text-4xl font-bold text-white flex items-center gap-2">
-            {ratingsStats.avgRating || 0}
-            <Star className="w-6 h-6 text-yellow-400 fill-yellow-400" />
-          </div>
-        </div>
-        <div className="bg-gradient-to-br from-blue-600/20 to-cyan-600/20 backdrop-blur-xl rounded-2xl border border-blue-500/30 p-8">
-          <div className="text-sm text-blue-300 mb-2">Yorumlu</div>
-          <div className="text-4xl font-bold text-white">{ratingsStats.withComments || 0}</div>
-        </div>
-        <div className="bg-gradient-to-br from-green-600/20 to-emerald-600/20 backdrop-blur-xl rounded-2xl border border-green-500/30 p-8">
-          <div className="text-sm text-green-300 mb-2">5 Yıldız</div>
-          <div className="text-4xl font-bold text-white">{ratingsStats.ratingDistribution?.[5] || 0}</div>
-        </div>
-      </div>
-    )}
 
-    {/* Rating Distribution */}
-    {ratingsStats && (
-      <div className="bg-slate-800/30 backdrop-blur-xl rounded-2xl border border-purple-500/20 p-8">
-        <h3 className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400 mb-6">
-          Puan Dağılımı
-        </h3>
-        <div className="space-y-4">
-          {[5, 4, 3, 2, 1].map(star => {
-            const count = ratingsStats.ratingDistribution?.[star] || 0;
-            const percentage = ratingsStats.totalRatings > 0 
-              ? Math.round((count / ratingsStats.totalRatings) * 100) 
-              : 0;
-            
-            return (
-              <div key={star} className="flex items-center gap-4">
-                <div className="flex items-center gap-1 w-20">
-                  <span className="text-white font-semibold">{star}</span>
-                  <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" />
+        {/* Ratings Tab */}
+        {activeTab === 'ratings' && (
+          <div className="space-y-8">
+            {ratingsStats && (
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <div className="bg-gradient-to-br from-yellow-600/20 to-orange-600/20 backdrop-blur-xl rounded-2xl border border-yellow-500/30 p-8">
+                  <div className="text-sm text-yellow-300 mb-2">Toplam Değerlendirme</div>
+                  <div className="text-4xl font-bold text-white">{ratingsStats.totalRatings || 0}</div>
                 </div>
-                <div className="flex-1 bg-gray-700 rounded-full h-6 overflow-hidden">
-                  <div 
-                    className="h-full bg-gradient-to-r from-yellow-500 to-orange-500 transition-all duration-500"
-                    style={{ width: `${percentage}%` }}
-                  />
-                </div>
-                <div className="w-20 text-right">
-                  <span className="text-white font-semibold">{count}</span>
-                  <span className="text-gray-400 text-sm ml-2">({percentage}%)</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    )}
-
-    {/* Ratings List */}
-    <div className="bg-slate-800/30 backdrop-blur-xl rounded-2xl border border-purple-500/20 overflow-hidden">
-      <div className="p-6 border-b border-purple-500/20">
-        <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400">
-          Tüm Değerlendirmeler
-        </h2>
-      </div>
-
-      {loading ? (
-        <div className="text-center py-16">
-          <div className="inline-block w-12 h-12 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mb-4" />
-          <p className="text-purple-300">Yükleniyor...</p>
-        </div>
-      ) : ratings.length === 0 ? (
-        <div className="text-center py-16">
-          <Star className="w-16 h-16 text-purple-400/50 mx-auto mb-4" />
-          <p className="text-purple-300/70 mb-2">Henüz değerlendirme yapılmamış</p>
-        </div>
-      ) : (
-        <div className="divide-y divide-purple-500/10">
-          {ratings.map((rating) => (
-            <div key={rating.id} className="p-6 hover:bg-slate-700/30 transition-all">
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-1">
-                    {[1, 2, 3, 4, 5].map(star => (
-                      <Star
-                        key={star}
-                        className={`w-5 h-5 ${
-                          star <= rating.rating
-                            ? 'text-yellow-400 fill-yellow-400'
-                            : 'text-gray-600'
-                        }`}
-                      />
-                    ))}
+                <div className="bg-gradient-to-br from-purple-600/20 to-pink-600/20 backdrop-blur-xl rounded-2xl border border-purple-500/30 p-8">
+                  <div className="text-sm text-purple-300 mb-2">Ortalama Puan</div>
+                  <div className="text-4xl font-bold text-white flex items-center gap-2">
+                    {ratingsStats.avgRating || 0}
+                    <Star className="w-6 h-6 text-yellow-400 fill-yellow-400" />
                   </div>
-                  <span className="text-white font-semibold">
-                    {rating.username}
-                  </span>
-                  {rating.isAnonymous && (
-                    <span className="px-2 py-1 text-xs bg-gray-700 text-gray-300 rounded-full">
-                      Anonim
-                    </span>
-                  )}
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-sm text-gray-400">
-                    {new Date(rating.createdAt).toLocaleString('tr-TR')}
-                  </span>
-                  <button
-                    onClick={() => handleDeleteRating(rating.id)}
-                    className="p-2 text-red-400 hover:bg-red-500/20 rounded-lg transition-all"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                <div className="bg-gradient-to-br from-blue-600/20 to-cyan-600/20 backdrop-blur-xl rounded-2xl border border-blue-500/30 p-8">
+                  <div className="text-sm text-blue-300 mb-2">Yorumlu</div>
+                  <div className="text-4xl font-bold text-white">{ratingsStats.withComments || 0}</div>
+                </div>
+                <div className="bg-gradient-to-br from-green-600/20 to-emerald-600/20 backdrop-blur-xl rounded-2xl border border-green-500/30 p-8">
+                  <div className="text-sm text-green-300 mb-2">5 Yıldız</div>
+                  <div className="text-4xl font-bold text-white">{ratingsStats.ratingDistribution?.[5] || 0}</div>
                 </div>
               </div>
-              {rating.comment && (
-                <p className="text-purple-200 bg-gray-900/50 rounded-lg p-4 mt-3">
-                  "{rating.comment}"
-                </p>
+            )}
+
+            {ratingsStats && (
+              <div className="bg-slate-800/30 backdrop-blur-xl rounded-2xl border border-purple-500/20 p-8">
+                <h3 className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400 mb-6">
+                  Puan Dağılımı
+                </h3>
+                <div className="space-y-4">
+                  {[5, 4, 3, 2, 1].map(star => {
+                    const count = ratingsStats.ratingDistribution?.[star] || 0;
+                    const percentage = ratingsStats.totalRatings > 0
+                      ? Math.round((count / ratingsStats.totalRatings) * 100)
+                      : 0;
+
+                    return (
+                      <div key={star} className="flex items-center gap-4">
+                        <div className="flex items-center gap-1 w-20">
+                          <span className="text-white font-semibold">{star}</span>
+                          <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" />
+                        </div>
+                        <div className="flex-1 bg-gray-700 rounded-full h-6 overflow-hidden">
+                          <div
+                            className="h-full bg-gradient-to-r from-yellow-500 to-orange-500 transition-all duration-500"
+                            style={{ width: `${percentage}%` }}
+                          />
+                        </div>
+                        <div className="w-20 text-right">
+                          <span className="text-white font-semibold">{count}</span>
+                          <span className="text-gray-400 text-sm ml-2">({percentage}%)</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div className="bg-slate-800/30 backdrop-blur-xl rounded-2xl border border-purple-500/20 overflow-hidden">
+              <div className="p-6 border-b border-purple-500/20">
+                <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400">
+                  Tüm Değerlendirmeler
+                </h2>
+              </div>
+
+              {loading ? (
+                <div className="text-center py-16">
+                  <div className="inline-block w-12 h-12 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mb-4" />
+                  <p className="text-purple-300">Yükleniyor...</p>
+                </div>
+              ) : ratings.length === 0 ? (
+                <div className="text-center py-16">
+                  <Star className="w-16 h-16 text-purple-400/50 mx-auto mb-4" />
+                  <p className="text-purple-300/70 mb-2">Henüz değerlendirme yapılmamış</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-purple-500/10">
+                  {ratings.map((rating) => (
+                    <div key={rating.id} className="p-6 hover:bg-slate-700/30 transition-all">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-1">
+                            {[1, 2, 3, 4, 5].map(star => (
+                              <Star
+                                key={star}
+                                className={`w-5 h-5 ${star <= rating.rating
+                                    ? 'text-yellow-400 fill-yellow-400'
+                                    : 'text-gray-600'
+                                  }`}
+                              />
+                            ))}
+                          </div>
+                          <span className="text-white font-semibold">
+                            {rating.username}
+                          </span>
+                          {rating.isAnonymous && (
+                            <span className="px-2 py-1 text-xs bg-gray-700 text-gray-300 rounded-full">
+                              Anonim
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-sm text-gray-400">
+                            {new Date(rating.createdAt).toLocaleString('tr-TR')}
+                          </span>
+                          <button
+                            onClick={() => handleDeleteRating(rating.id)}
+                            className="p-2 text-red-400 hover:bg-red-500/20 rounded-lg transition-all"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                      {rating.comment && (
+                        <p className="text-purple-200 bg-gray-900/50 rounded-lg p-4 mt-3">
+                          "{rating.comment}"
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
-          ))}
-        </div>
-      )}
-    </div>
-  </div>
-)}
+          </div>
+        )}
+
         {/* Stats Tab */}
         {activeTab === 'stats' && stats && (
           <div className="space-y-8">
@@ -1323,7 +1298,6 @@ useEffect(() => {
         {/* Results Tab */}
         {activeTab === 'results' && (
           <div className="space-y-8">
-            {/* Filter Stats */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               <div className="bg-gradient-to-br from-purple-600/20 to-pink-600/20 backdrop-blur-xl rounded-2xl border border-purple-500/30 p-8">
                 <div className="text-sm text-purple-300 mb-2">Gösterilen Sonuçlar</div>
@@ -1343,7 +1317,6 @@ useEffect(() => {
               </div>
             </div>
 
-            {/* Filters */}
             <div className="bg-slate-800/30 backdrop-blur-xl rounded-2xl border border-purple-500/20 p-8">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400 flex items-center gap-3">
@@ -1374,7 +1347,7 @@ useEffect(() => {
                         className="w-full px-4 py-3 rounded-xl bg-slate-700/50 text-white border border-purple-500/30 focus:ring-2 focus:ring-purple-500 outline-none"
                       />
                     </div>
-                    
+
                     <div>
                       <label className="block text-sm font-semibold text-purple-300 mb-2">
                         Maksimum Yaş
@@ -1404,7 +1377,7 @@ useEffect(() => {
                         className="w-full px-4 py-3 rounded-xl bg-slate-700/50 text-white border border-purple-500/30 focus:ring-2 focus:ring-purple-500 outline-none"
                       />
                     </div>
-                    
+
                     <div>
                       <label className="block text-sm font-semibold text-purple-300 mb-2">
                         Maksimum Puan
@@ -1434,7 +1407,7 @@ useEffect(() => {
                         className="w-full px-4 py-3 rounded-xl bg-slate-700/50 text-white border border-purple-500/30 focus:ring-2 focus:ring-purple-500 outline-none"
                       >
                         <option value="">Tümü</option>
-                        {assessmentResults && assessmentResults.length > 0 && 
+                        {assessmentResults && assessmentResults.length > 0 &&
                           [...new Set(assessmentResults.map(r => r.education).filter(Boolean))].sort().map((school, idx) => (
                             <option key={idx} value={school}>{school}</option>
                           ))
@@ -1486,7 +1459,6 @@ useEffect(() => {
               )}
             </div>
 
-            {/* Results Table */}
             <div className="bg-slate-800/30 backdrop-blur-xl rounded-2xl border border-purple-500/20 overflow-hidden">
               {loading ? (
                 <div className="text-center py-16">
@@ -1518,7 +1490,7 @@ useEffect(() => {
                           filteredResults.map((result, index) => {
                             const percentage = result.percentage || 0;
                             const scoreColor = percentage >= 75 ? 'text-red-400' : percentage >= 50 ? 'text-yellow-400' : 'text-green-400';
-                            
+
                             return (
                               <tr key={index} className="border-b border-purple-500/10 hover:bg-slate-700/30 transition-all">
                                 <td className="px-6 py-4 text-sm font-bold text-purple-400">{result.anonId}</td>
@@ -1560,23 +1532,23 @@ useEffect(() => {
                 <X className="w-6 h-6" />
               </button>
             </div>
-            
+
             <div className="space-y-5">
               <div>
                 <label className="block text-sm font-semibold text-purple-300 mb-2">Kanal Adı</label>
                 <input
                   type="text"
                   value={newChannel.name}
-                  onChange={(e) => setNewChannel({...newChannel, name: e.target.value})}
+                  onChange={(e) => setNewChannel({ ...newChannel, name: e.target.value })}
                   className="w-full px-4 py-3 bg-slate-700/50 border border-purple-500/30 rounded-xl text-white focus:ring-2 focus:ring-purple-500 outline-none"
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-semibold text-purple-300 mb-2">Kategori</label>
                 <select
                   value={newChannel.category}
-                  onChange={(e) => setNewChannel({...newChannel, category: e.target.value})}
+                  onChange={(e) => setNewChannel({ ...newChannel, category: e.target.value })}
                   className="w-full px-4 py-3 bg-slate-700/50 border border-purple-500/30 rounded-xl text-white focus:ring-2 focus:ring-purple-500 outline-none"
                 >
                   <option value="Support">Support</option>
@@ -1584,27 +1556,27 @@ useEffect(() => {
                   <option value="Community">Community</option>
                 </select>
               </div>
-              
+
               <div>
                 <label className="block text-sm font-semibold text-purple-300 mb-2">Açıklama</label>
                 <textarea
                   value={newChannel.description}
-                  onChange={(e) => setNewChannel({...newChannel, description: e.target.value})}
+                  onChange={(e) => setNewChannel({ ...newChannel, description: e.target.value })}
                   className="w-full px-4 py-3 bg-slate-700/50 border border-purple-500/30 rounded-xl text-white focus:ring-2 focus:ring-purple-500 outline-none"
                   rows="3"
                 />
               </div>
-              
+
               <div className="flex items-center gap-3">
                 <input
                   type="checkbox"
                   checked={newChannel.isPublic}
-                  onChange={(e) => setNewChannel({...newChannel, isPublic: e.target.checked})}
+                  onChange={(e) => setNewChannel({ ...newChannel, isPublic: e.target.checked })}
                   className="w-5 h-5 rounded border-purple-500/30"
                 />
                 <label className="text-sm text-purple-300 font-semibold">Genel Kanal</label>
               </div>
-              
+
               <div className="flex gap-3 pt-4">
                 <button
                   onClick={handleAddChannel}

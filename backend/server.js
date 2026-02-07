@@ -954,21 +954,24 @@ app.get('/api/agora/rtc-token', authenticateToken, async (req, res) => {
     );
 
     // 🎯 CRITICAL: Store user mapping
-    uidToUserIdMap.set(uid, req.user.userId.toString());
+    const userIdStr = req.user.userId.toString();
+    uidToUserIdMap.set(uid, userIdStr);
     
     // Track active user in channel
     if (!activeVoiceUsers.has(channelName)) {
       activeVoiceUsers.set(channelName, new Map());
     }
     
+    // 🔥 UPDATE: Always update/overwrite user data to keep it fresh
     activeVoiceUsers.get(channelName).set(uid, {
       username,
-      userId: req.user.userId.toString(),
+      userId: userIdStr,
       joinedAt: Date.now()
     });
 
-    // Clean up old users (older than 2 hours)
+    // Clean up old users (older than 2 hours) AND empty channels
     const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
+    
     for (const [ch, users] of activeVoiceUsers.entries()) {
       for (const [u, data] of users.entries()) {
         if (data.joinedAt < twoHoursAgo) {
@@ -985,6 +988,7 @@ app.get('/api/agora/rtc-token', authenticateToken, async (req, res) => {
     const channelUsers = [];
     if (activeVoiceUsers.has(channelName)) {
       for (const [u, data] of activeVoiceUsers.get(channelName).entries()) {
+        // Don't include self in the list if you want, but usually it helps to know everyone
         channelUsers.push({ 
           uid: u, 
           username: data.username,
