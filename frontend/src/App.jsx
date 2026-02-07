@@ -213,6 +213,15 @@ const API = {
     return this.request(`/agora/rtc-token?channelName=${encodeURIComponent(channelName)}`);
   },
 
+  // Get voice channel users (no auth required)
+  async getVoiceUsers(channelName) {
+    const response = await fetch(`${this.baseURL}/agora/voice-users/${encodeURIComponent(channelName)}`);
+    if (!response.ok) {
+      return { count: 0, users: [] };
+    }
+    return response.json();
+  },
+
   async getAssessmentResults() {
     return this.request('/assessment/results');
   }
@@ -460,8 +469,17 @@ function App() {
   }
 
   if (currentView === 'login') {
-    return <LoginView onLogin={(userData) => {
+    return <LoginView onLogin={async (userData) => {
       setUser(userData);
+      // Load channels immediately after login if user completed assessment
+      if (userData.hasCompletedAssessment) {
+        try {
+          const channelsData = await API.getChannels();
+          setChannels(channelsData);
+        } catch (error) {
+          console.error('Failed to load channels after login:', error);
+        }
+      }
       setCurrentView(userData.hasCompletedAssessment ? 'chat' : 'assessment');
     }} />;
   }

@@ -110,6 +110,16 @@ const authMiddleware = async (req, res, next) => {
     if (!token) throw new Error();
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+
+    // Allow admin-only tokens (no userId) to pass through
+    if (decoded.adminAccess || decoded.isAdmin) {
+      req.user = { isAdmin: true, adminAccess: true };
+      req.token = token;
+      req.decoded = decoded;
+      return next();
+    }
+
+    // For regular users, require userId
     const user = await User.findById(decoded.userId);
 
     if (!user) throw new Error();
@@ -1034,6 +1044,34 @@ app.get('/api/agora/user/:uid', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Get username error:', error);
     res.status(500).json({ error: 'Failed to get username' });
+  }
+});
+
+// Get voice channel user count (no auth required - for Discord-style preview)
+app.get('/api/agora/voice-users/:channelName', async (req, res) => {
+  try {
+    const { channelName } = req.params;
+    const channelUsers = activeVoiceUsers.get(channelName);
+
+    if (!channelUsers || channelUsers.size === 0) {
+      return res.json({ count: 0, users: [] });
+    }
+
+    const users = [];
+    for (const [uid, data] of channelUsers.entries()) {
+      users.push({
+        uid,
+        username: data.username
+      });
+    }
+
+    res.json({
+      count: users.length,
+      users: users
+    });
+  } catch (error) {
+    console.error('Get voice users error:', error);
+    res.status(500).json({ error: 'Failed to get voice users', count: 0 });
   }
 });
 

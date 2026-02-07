@@ -250,6 +250,7 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
   const [isDeafened, setIsDeafened] = useState(false);
   const [voiceUsers, setVoiceUsers] = useState([]);
   const [speakingUsers, setSpeakingUsers] = useState(new Set());
+  const [voiceChannelUserCount, setVoiceChannelUserCount] = useState(0);
 
   // UI State
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -273,6 +274,24 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
   useEffect(() => {
     loadExistingRating();
   }, []);
+
+  // Fetch voice channel user count periodically (Discord-style preview)
+  useEffect(() => {
+    const fetchVoiceUserCount = async () => {
+      if (!inVoiceCall) {
+        try {
+          const data = await API.getVoiceUsers('sesli-sohbet-1');
+          setVoiceChannelUserCount(data.count || 0);
+        } catch (error) {
+          console.error('Failed to fetch voice users:', error);
+        }
+      }
+    };
+
+    fetchVoiceUserCount();
+    const interval = setInterval(fetchVoiceUserCount, 5000); // Poll every 5 seconds
+    return () => clearInterval(interval);
+  }, [inVoiceCall]);
   // Message Loading & Polling
   useEffect(() => {
     if (!activeChannel) return;
@@ -750,12 +769,17 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
               >
                 <Volume2 size={18} className={`mr-2.5 flex-shrink-0 ${inVoiceCall ? 'text-green-400' : 'text-gray-500 group-hover:text-gray-400'}`} />
                 <span className="text-sm font-medium">sesli-sohbet-1</span>
-                {inVoiceCall && (
-                  <div className="ml-auto flex items-center gap-1">
-                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-                    <span className="text-xs text-green-400">{voiceUsers.length}</span>
-                  </div>
-                )}
+                {/* Always show user count (Discord-style) */}
+                <div className="ml-auto flex items-center gap-1">
+                  {(inVoiceCall ? voiceUsers.length : voiceChannelUserCount) > 0 && (
+                    <>
+                      <div className={`w-2 h-2 rounded-full ${inVoiceCall ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`}></div>
+                      <span className={`text-xs ${inVoiceCall ? 'text-green-400' : 'text-gray-500'}`}>
+                        {inVoiceCall ? voiceUsers.length : voiceChannelUserCount}
+                      </span>
+                    </>
+                  )}
+                </div>
               </button>
             </div>
           </div>
