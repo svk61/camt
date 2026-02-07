@@ -39,7 +39,7 @@ const UserSchema = new mongoose.Schema({
   hasCompletedAssessment: { type: Boolean, default: false },
   assessmentAnswers: Object,
   assessmentScore: { type: Number, default: 0 },
-  syndromeLevel: { type: String, enum: ['dusuk', 'orta', 'yuksek'], default: null },
+  syndromeLevel: { type: String, enum: ['dusuk', 'orta', 'yuksek'] },
   gender: String,
   age: Number,
   education: String,
