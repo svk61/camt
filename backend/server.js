@@ -626,9 +626,16 @@ app.post('/api/assessment/submit', authMiddleware, async (req, res) => {
 
 app.get('/api/channels', authMiddleware, async (req, res) => {
   try {
+    // Admin sees all channels
+    // Regular users see: public channels OR channels in their assignedChannels
     const query = req.user.isAdmin
       ? {}
-      : { name: { $in: req.user.assignedChannels || [] } };
+      : {
+        $or: [
+          { isPublic: true },
+          { name: { $in: req.user.assignedChannels || [] } }
+        ]
+      };
 
     const channels = await Channel.find(query);
     res.json(channels);
