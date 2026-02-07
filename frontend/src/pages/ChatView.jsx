@@ -413,7 +413,12 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
       } catch (e) { /* ignore RTM fail */ }
     } catch (error) {
       console.error('Mesaj gitmedi:', error);
-      alert('Mesaj gönderilemedi.');
+      // Handle content filter rejection
+      if (error.message && error.message.includes('filtered')) {
+        alert('⚠️ ' + (error.details?.message || 'Mesajınız uygunsuz içerik içeriyor. Lütfen topluluk kurallarına uyun.'));
+      } else {
+        alert('Mesaj gönderilemedi.');
+      }
       setMessages(prev => prev.filter(m => m._id !== tempId));
       setMessageInput(currentInput);
     }
@@ -861,11 +866,6 @@ function ChatView({ user, channels, onLogout, onProfileUpdate }) {
               <Star className="w-4 h-4 group-hover:scale-110 transition-transform" />
               <span className="text-sm">Sitemizi Değerlendirin</span>
             </button>
-            {existingRating && (
-              <p className="text-xs text-center text-gray-400 mt-1">
-                Mevcut puanınız: {'⭐'.repeat(existingRating.rating)}
-              </p>
-            )}
           </div>
 
           {/* User Info Row */}

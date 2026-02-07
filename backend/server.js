@@ -10,6 +10,9 @@ const { RtmTokenBuilder, RtmRole } = require('agora-access-token');
 
 dotenv.config();
 
+// Content Filter
+const contentFilter = require('./contentFilter');
+
 const app = express();
 
 // Middleware
@@ -748,6 +751,16 @@ app.get('/api/channels/:channelId/messages', authMiddleware, async (req, res) =>
 app.post('/api/channels/:channelId/messages', authMiddleware, async (req, res) => {
   try {
     const { text } = req.body;
+
+    // Content filter check
+    const filterResult = contentFilter.checkMessage(text);
+    if (!filterResult.isClean) {
+      return res.status(400).json({
+        error: 'filtered',
+        message: contentFilter.getWarningMessage(filterResult.category),
+        category: contentFilter.getCategoryDisplayName(filterResult.category)
+      });
+    }
 
     const message = new Message({
       channelId: req.params.channelId,

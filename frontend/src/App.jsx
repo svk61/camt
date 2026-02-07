@@ -40,7 +40,9 @@ const API = {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Request failed');
+        const error = new Error(data.error || 'Request failed');
+        error.details = data; // Include full response data for filter messages
+        throw error;
       }
 
       return data;
