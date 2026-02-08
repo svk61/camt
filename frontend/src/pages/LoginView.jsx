@@ -9,21 +9,34 @@ function LoginView({ onLogin }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [activeTextIndex, setActiveTextIndex] = useState(0);
+  const [hiddenClickCount, setHiddenClickCount] = useState(0);
+
+  // Hidden navigation to exhibition page
+  const handleHiddenClick = () => {
+    const newCount = hiddenClickCount + 1;
+    setHiddenClickCount(newCount);
+    if (newCount >= 5) {
+      window.location.hash = 'exhibition';
+      setHiddenClickCount(0);
+    }
+    // Reset count after 3 seconds of inactivity
+    setTimeout(() => setHiddenClickCount(0), 3000);
+  };
 
   // Sol paneldeki animasyonlu metinler (Login için özel)
   const infoTexts = [
-    { 
-      title: "Tekrar Hoş Geldin", 
+    {
+      title: "Tekrar Hoş Geldin",
       desc: "Kaldığın yerden devam et, topluluğun gücünü yanında hisset.",
       icon: <Users className="w-8 h-8 mb-4 opacity-80" />
     },
-    { 
-      title: "Güvenli Alan", 
+    {
+      title: "Güvenli Alan",
       desc: "Verilerin ve paylaşımların uçtan uca şifreleme ile güvende.",
       icon: <ShieldCheck className="w-8 h-8 mb-4 opacity-80" />
     },
-    { 
-      title: "Hızlı Erişim", 
+    {
+      title: "Hızlı Erişim",
       desc: "Uzmanlara ve deneyim paylaşımlarına anında ulaş.",
       icon: <Zap className="w-8 h-8 mb-4 opacity-80" />
     }
@@ -40,10 +53,10 @@ function LoginView({ onLogin }) {
   const handleLogin = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
     if (!email || !password) return;
-    
+
     setError('');
     setLoading(true);
-    
+
     try {
       const result = await API.login(email, password);
       localStorage.setItem('token', result.token);
@@ -72,11 +85,10 @@ function LoginView({ onLogin }) {
             {infoTexts.map((text, index) => (
               <div
                 key={index}
-                className={`transition-all duration-700 absolute inset-0 transform flex flex-col justify-center ${
-                  index === activeTextIndex 
-                    ? 'opacity-100 translate-x-0 blur-0' 
+                className={`transition-all duration-700 absolute inset-0 transform flex flex-col justify-center ${index === activeTextIndex
+                    ? 'opacity-100 translate-x-0 blur-0'
                     : 'opacity-0 -translate-x-12 blur-sm pointer-events-none'
-                }`}
+                  }`}
               >
                 <div className="animate-bounce-slow ml-1">{text.icon}</div>
                 <h2 className="text-5xl font-extrabold leading-tight mb-6 tracking-tight">
@@ -96,33 +108,35 @@ function LoginView({ onLogin }) {
             <button
               key={i}
               onClick={() => setActiveTextIndex(i)}
-              className={`h-1.5 rounded-full transition-all duration-500 cursor-pointer hover:bg-white/80 ${
-                i === activeTextIndex ? 'w-8 bg-white' : 'w-2 bg-indigo-400 dark:bg-indigo-700'
-              }`}
+              className={`h-1.5 rounded-full transition-all duration-500 cursor-pointer hover:bg-white/80 ${i === activeTextIndex ? 'w-8 bg-white' : 'w-2 bg-indigo-400 dark:bg-indigo-700'
+                }`}
             />
           ))}
         </div>
-        
+
         {/* Dekoratif Arkaplan */}
         <div className="absolute top-0 right-0 w-96 h-96 bg-purple-500 rounded-full mix-blend-multiply filter blur-[100px] opacity-40 animate-pulse"></div>
         <div className="absolute bottom-0 left-0 w-80 h-80 bg-blue-500 rounded-full mix-blend-multiply filter blur-[80px] opacity-40 animate-pulse delay-1000"></div>
-        
-        <div className="relative z-10 text-xs text-indigo-200 mt-4">
+
+        <div
+          className="relative z-10 text-xs text-indigo-200 mt-4 cursor-default select-none"
+          onClick={handleHiddenClick}
+        >
           © 2026 Destek Topluluğu.{" "}
-<span className="opacity-60">Sürüm {import.meta.env.VITE_VER}</span>
+          <span className="opacity-60">Sürüm {import.meta.env.VITE_VER}</span>
         </div>
       </div>
 
       {/* Sağ Panel: Login Formu */}
       <div className="flex-1 flex items-center justify-center p-6 lg:p-16 relative">
         <div className="w-full max-w-md space-y-8 animate-slide-up-fade">
-          
+
           {/* Mobil Logo */}
           <div className="md:hidden flex flex-col items-center mb-8">
-             <div className="w-14 h-14 bg-indigo-600 rounded-2xl flex items-center justify-center mb-4 shadow-lg shadow-indigo-200 dark:shadow-none">
-                <Hash className="w-7 h-7 text-white" />
-             </div>
-             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Giriş Yap</h1>
+            <div className="w-14 h-14 bg-indigo-600 rounded-2xl flex items-center justify-center mb-4 shadow-lg shadow-indigo-200 dark:shadow-none">
+              <Hash className="w-7 h-7 text-white" />
+            </div>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Giriş Yap</h1>
           </div>
 
           <div className="hidden md:block">
@@ -146,7 +160,7 @@ function LoginView({ onLogin }) {
             <div className="space-y-1">
               <div className="flex justify-between items-center ml-1">
                 <label className="text-sm font-bold text-gray-700 dark:text-gray-300">Şifre</label>
-               
+
               </div>
               <div className="relative group">
                 <input
@@ -184,7 +198,7 @@ function LoginView({ onLogin }) {
                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               ) : (
                 <>
-                  Giriş Yap 
+                  Giriş Yap
                   <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                 </>
               )}
@@ -193,8 +207,8 @@ function LoginView({ onLogin }) {
 
           <div className="space-y-6 pt-2">
             <div className="relative py-2">
-                <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-100 dark:border-gray-800"></div></div>
-                <div className="relative flex justify-center text-xs uppercase font-bold tracking-wider"><span className="bg-gray-50 dark:bg-gray-900 px-3 text-gray-400 dark:text-gray-500">veya</span></div>
+              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-100 dark:border-gray-800"></div></div>
+              <div className="relative flex justify-center text-xs uppercase font-bold tracking-wider"><span className="bg-gray-50 dark:bg-gray-900 px-3 text-gray-400 dark:text-gray-500">veya</span></div>
             </div>
 
             <p className="text-center text-gray-600 dark:text-gray-400 text-sm font-medium">

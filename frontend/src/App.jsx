@@ -6,6 +6,7 @@ import RegisterView from './pages/RegisterView';
 import AssessmentView from './pages/AssessmentView';
 import ChatView from './pages/ChatView';
 import AdminPanel from './pages/AdminPanel';
+import ExhibitionView from './pages/ExhibitionView';
 
 // Real API service
 // App.js - Fixed Agora RTM Integration
@@ -419,6 +420,8 @@ function App() {
         setCurrentView('register');
       } else if (window.location.hash === '#admin') {
         setCurrentView('admin');
+      } else if (window.location.hash === '#exhibition') {
+        setCurrentView('exhibition');
       } else if (window.location.hash === '#login') {
         setCurrentView('login');
       }
@@ -546,6 +549,10 @@ function App() {
 
   if (currentView === 'admin') {
     return <AdminPanel />;
+  }
+
+  if (currentView === 'exhibition') {
+    return <ExhibitionView />;
   }
 
   return null;
