@@ -827,7 +827,12 @@ app.delete('/api/channels/:channelId/messages/:messageId', authMiddleware, async
       return res.status(404).json({ error: 'Mesaj bulunamadı' });
     }
 
-    if (message.userId !== req.user._id.toString() && !req.user.isAdmin) {
+    // Admin kullanıcılar tüm mesajları silebilir
+    // Normal kullanıcılar sadece kendi mesajlarını silebilir
+    const isAdmin = req.user.isAdmin || req.user.adminAccess;
+    const isOwner = req.user._id && message.userId === req.user._id.toString();
+
+    if (!isAdmin && !isOwner) {
       return res.status(403).json({ error: 'Bu mesajı silme yetkiniz yok' });
     }
 
