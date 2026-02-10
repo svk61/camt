@@ -396,7 +396,7 @@ function ExhibitionView() {
                                 controls
                                 poster="/api/placeholder/800/450"
                             >
-                                <source src="/media/video.mp4" type="video/mp4" />
+                                <source src="https://www.youtube.com/embed/zWH_9VRWn8Y?si=nHdPR_cF_V0jKhg7&amp;start=80" type="video/mp4" />
                                 Video yüklenemedi.
                             </video>
                         </div>
