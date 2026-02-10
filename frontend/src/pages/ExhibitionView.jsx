@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
     ChevronLeft, ChevronRight, Users, Brain, Target, BarChart3,
     Shield, MessageCircle, Quote, ArrowRight, Play, Pause, Activity, Lock,
-    Bird, Sparkles, TrendingUp, QrCode
+    Bird, Sparkles, TrendingUp, QrCode, Image
 } from 'lucide-react';
 
 // --- Sub-components for Animations & UI ---
@@ -386,6 +386,20 @@ function ExhibitionView() {
                 <div className="flex flex-col items-center justify-center h-full text-center space-y-10 relative z-10 max-w-4xl mx-auto">
                     <div className="w-48 h-48 bg-gray-100 rounded-full flex items-center justify-center animate-bounce-slow shadow-[0_0_80px_rgba(255,255,255,0.2)] border-4 border-white">
                         <Bird className="w-24 h-24 text-gray-900" />
+                    </div>
+
+                    {/* Video Section */}
+                    <div className="w-full max-w-3xl">
+                        <div className="aspect-video bg-white/10 rounded-3xl overflow-hidden shadow-2xl border border-white/20 backdrop-blur-sm">
+                            <video
+                                className="w-full h-full object-cover"
+                                controls
+                                poster="/api/placeholder/800/450"
+                            >
+                                <source src="/videos/cesur-penguen.mp4" type="video/mp4" />
+                                Video yüklenemedi.
+                            </video>
+                        </div>
                     </div>
 
                     <div className="space-y-6">
