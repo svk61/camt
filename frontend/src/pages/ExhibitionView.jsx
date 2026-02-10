@@ -396,7 +396,7 @@ function ExhibitionView() {
                                 controls
                                 poster="/api/placeholder/800/450"
                             >
-                                <source src="/videos/cesur-penguen.mp4" type="video/mp4" />
+                                <source src="/media/video.mp4" type="video/mp4" />
                                 Video yüklenemedi.
                             </video>
                         </div>
@@ -453,19 +453,23 @@ function ExhibitionView() {
 
                         {/* Screen Content */}
                         <div className="w-full h-full bg-gray-50 rounded-[2rem] overflow-hidden relative">
-                            {/* Mock Header */}
-                            <div className="h-16 bg-indigo-600 w-full"></div>
-                            {/* Mock Chat Bubbles */}
-                            <div className="p-6 space-y-4">
-                                <div className="w-3/4 h-10 bg-indigo-100 rounded-2xl rounded-tl-none self-start"></div>
-                                <div className="w-3/4 h-16 bg-indigo-100 rounded-2xl rounded-tl-none self-start"></div>
-                                <div className="w-2/3 h-10 bg-gray-200 rounded-2xl rounded-tr-none ml-auto"></div>
-                                <div className="w-1/2 h-8 bg-indigo-100 rounded-2xl rounded-tl-none self-start mt-8"></div>
-                            </div>
+                            {/* Platform Screenshot - Fotoğrafınızı buraya ekleyin */}
+                            <img
+                                src="/media/site.png"
+                                alt="Platform Ekran Görüntüsü"
+                                className="w-full h-full object-cover"
+                            />
 
-                            <div className="absolute inset-0 flex items-center justify-center bg-black/5 backdrop-blur-[1px]">
-                                <Image className="w-16 h-16 text-gray-400 opacity-50" />
-                            </div>
+                            {/* Alternatif: Eğer fotoğraf yoksa mock içerik göster */}
+                            {/* <div className="w-full h-full">
+                                <div className="h-16 bg-indigo-600 w-full"></div>
+                                <div className="p-6 space-y-4">
+                                    <div className="w-3/4 h-10 bg-indigo-100 rounded-2xl rounded-tl-none self-start"></div>
+                                    <div className="w-3/4 h-16 bg-indigo-100 rounded-2xl rounded-tl-none self-start"></div>
+                                    <div className="w-2/3 h-10 bg-gray-200 rounded-2xl rounded-tr-none ml-auto"></div>
+                                    <div className="w-1/2 h-8 bg-indigo-100 rounded-2xl rounded-tl-none self-start mt-8"></div>
+                                </div>
+                            </div> */}
                         </div>
 
                         {/* Reflections */}
